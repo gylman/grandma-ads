@@ -698,3 +698,54 @@ A botless version could work like this:
    - correct timestamp
    - post still exists after duration
 10. If valid, escrow pays the wallet that accepted the campaign.
+
+1. Poster connects wallet.
+2. Poster enters channel username: @SomeChannel.
+3. Backend generates unique verification code:
+   VERIFY-123456-0xPosterWallet
+4. Poster posts this code in @SomeChannel.
+5. Poster submits the verification post link.
+6. Backend fetches the post link and checks:
+   - is it from @SomeChannel?
+   - does it contain the exact code?
+   - was it posted recently?
+7. If valid, mark channel as verified for that wallet.
+8. Poster can now receive/accept campaigns for that channel.
+
+
+{
+  initialBudget: 100,
+  maxBudget: 130,
+  desiredDurationHours: 24,
+  minDurationHours: 12,
+  allowedChanges: ["price", "duration", "caption"],
+  requireApprovalBeforeFinalAccept: true
+}
+
+
+Advertiser: I want to promote this app on @SomeChannel. Budget $100.
+Agent: That channel usually asks for $150 for 24 hours. Do you want me to offer $100 anyway, offer $120 for 12 hours, or ask for a counter?
+
+Agent: You received a $100 offer for a 24-hour post. Your minimum is $120. I can counter with $120 or suggest a 12-hour post for $100.
+
+Web app:
+- wallet connection
+- deposits
+- campaign creation
+- negotiation dashboard
+- channel verification by proof post
+- post-link submission
+
+Telegram bot:
+- notify poster about new offer
+- notify advertiser about counteroffer
+- remind poster to publish
+- remind advertiser to respond
+
+
+Option B: Bot for notifications only
+
+Agentic negotiation can happen through both web app and Telegram messages.
+
+Good: practical, user-friendly
+Bad: users must start the bote

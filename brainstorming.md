@@ -645,3 +645,44 @@ In your case, the agent should behave like:
 “Given an advertiser’s goal, budget, creative, and target channel, plan the campaign, prepare the offer, negotiate within allowed limits, guide the poster, verify delivery, and trigger settlement when conditions are met.”
 
 
+### Third version
+
+1. Advertiser connects wallet in web app.
+2. Advertiser deposits USDC/ETH into app balance.
+3. Advertiser creates ad campaign using available balance.
+4. Backend/agent sends offer to poster in Telegram.
+5. Poster accepts/rejects/counters in Telegram.
+6. If accepted, poster posts ad manually.
+7. Bot verifies post.
+8. Timer starts.
+9. After duration, bot verifies post still exists.
+10. Backend/verifier calls contract to complete campaign.
+11. Contract credits poster’s app balance.
+12. Poster withdraws from web app whenever they want.
+
+Question
+
+Important issue: “from whatever wallet address they want”
+
+You said:
+
+They should top up their virtual account in advance from whatever wallet address they want.
+
+Be careful.
+
+If user A tops up from wallet X, whose virtual account gets credited?
+
+The contract only sees:
+
+msg.sender = wallet X
+
+So by default, balance belongs to wallet X.
+
+That means your app account should be based on wallet address, not Telegram username.
+
+So:
+
+Wallet address = financial identity
+Telegram account = communication identity
+
+A Telegram account can be linked to a wallet address, but the money belongs to the wallet.

@@ -532,3 +532,116 @@ Use this:
 Posters must connect a wallet before they can accept campaigns, but they do not need to withdraw after every campaign. Their earnings accumulate as a claimable balance in the escrow contract.
 
 That gives you the benefit of virtual balance without becoming fully custodial.
+
+
+If your bot is added to the channel as an admin, it can receive channel_post updates from the channel. Telegram Bot API represents channel posts separately through channel_post updates, and bots need the correct channel/admin setup to receive and act on channel content. Telegram also has channel-specific admin permissions like can_post_messages and can_edit_messages.
+
+For each channel post, your bot can usually inspect useful metadata such as:
+
+channel id
+message id
+date
+text or caption
+photo/video/document info
+edit date, if edited
+media group id, if album
+reply markup, if any
+
+Was it posted in the correct channel?
+Was it posted after the campaign was accepted?
+Does the text/caption match the approved text?
+Does the image/video match the approved media?
+Was the post edited later?
+Is the post still available after the required duration?
+
+
+In Telegram channels, posts are generally published as the channel, not as a visible individual admin. A regular channel post does not necessarily expose a reliable human identity like:
+
+So your system should not depend on proving:
+
+This exact user manually posted it.
+
+Instead, you should verify:
+
+The approved ad appeared in the approved channel.
+
+
+This may be the best product flow:
+
+1. Channel owner registers channel.
+2. Bot is added as admin or at least has enough access to read channel posts.
+3. Advertiser creates campaign and funds escrow.
+4. Channel owner accepts the offer.
+5. Bot sends the exact approved ad package to the channel owner.
+6. Channel owner manually posts it in their channel.
+7. Bot watches channel_post updates.
+8. Bot detects a matching post.
+9. Bot stores channel_id + message_id + content hash.
+10. Countdown starts.
+11. After duration, bot checks that the post still exists and was not materially edited.
+12. Payment becomes claimable.
+
+
+For image/video, store Telegram’s returned file information when the advertiser uploads the creative.
+
+But be careful: Telegram file_id can be useful inside Telegram, but if the poster manually uploads the same image, it may not always be enough as a universal identity. Better options:
+- store the original media hash
+- download the posted media
+- hash it
+- compare hashes
+
+
+Store the public post link.
+Periodically try to fetch/check it.
+At the end of the campaign, verify it is still accessible.
+
+
+Campaign accepted.
+
+Please publish the following ad exactly as shown.
+
+Required caption:
+"..."
+
+Required image:
+[image]
+
+After posting, forward the post here or send the post link.
+The bot will verify it automatically.
+
+
+- Public Telegram channels only
+- Poster must register the channel
+- Poster must add bot as admin/read-capable participant
+- Advertiser funds escrow
+- Poster accepts offer
+- Poster must post exact caption and exact media
+- Poster submits link or forwards the post to the bot
+- Bot verifies channel id, message id, caption, image hash, and timestamp
+- Timer starts after verification
+- Edited post must still match
+- At the end, bot checks the post link still exists
+- Then payment becomes claimable
+
+Important product framing
+
+Do not say:
+
+“We prove the exact admin posted it.”
+
+Say:
+
+“We verify that the approved ad appeared in the approved channel and stayed live for the agreed duration.”
+
+That is the real guarantee advertisers care about.
+
+
+To make this app agentic, do not just add “AI text generation.”
+
+Make the AI responsible for goal-driven work across multiple steps, while your backend keeps strict control over money, permissions, and final state changes.
+
+In your case, the agent should behave like:
+
+“Given an advertiser’s goal, budget, creative, and target channel, plan the campaign, prepare the offer, negotiate within allowed limits, guide the poster, verify delivery, and trigger settlement when conditions are met.”
+
+

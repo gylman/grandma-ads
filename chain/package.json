@@ -1,16 +1,10 @@
 {
   "name": "chain",
   "version": "1.0.0",
-  "main": "dist/index.js",
+  "private": true,
   "scripts": {
-    "build": "tsc"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "devDependencies": {
-    "@types/node": "^25.6.0",
-    "typescript": "^6.0.3"
+    "build": "forge build",
+    "fmt": "forge fmt",
+    "test": "forge test --offline"
   }
 }

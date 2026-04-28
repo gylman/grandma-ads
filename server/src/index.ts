@@ -1,14 +1,16 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express } from 'express';
+import { apiRouter } from './api/routes';
+import { config } from './config';
 
 const app: Express = express();
-const port = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(apiRouter);
 
-app.get('/', (req: Request, res: Response) => {
-  res.json({ message: 'Hello from server!' });
+app.get('/', (_req, res) => {
+  res.json({ message: 'Grandma Ads server', health: '/health' });
 });
 
-app.listen(port, () => {
-  console.log(`[server]: Server is running at http://localhost:${port}`);
+app.listen(config.port, () => {
+  console.log(`[server]: Server is running at http://localhost:${config.port}`);
 });

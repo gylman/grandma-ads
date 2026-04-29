@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 export type AppConfig = {
   port: number;
   clientUrl: string;
@@ -7,6 +9,8 @@ export type AppConfig = {
   escrowContractAddress: string;
   usdcTokenAddress: string;
   verifierPrivateKey: string;
+  telegramBotToken: string;
+  telegramBotMode: 'off' | 'polling';
 };
 
 export const config: AppConfig = {
@@ -18,4 +22,11 @@ export const config: AppConfig = {
   escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS ?? '',
   usdcTokenAddress: process.env.USDC_TOKEN_ADDRESS ?? '',
   verifierPrivateKey: process.env.VERIFIER_PRIVATE_KEY ?? '',
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+  telegramBotMode: parseTelegramBotMode(process.env.TELEGRAM_BOT_MODE, process.env.TELEGRAM_BOT_TOKEN),
 };
+
+function parseTelegramBotMode(mode: string | undefined, token: string | undefined): AppConfig['telegramBotMode'] {
+  if (mode === 'off' || mode === 'polling') return mode;
+  return token ? 'polling' : 'off';
+}

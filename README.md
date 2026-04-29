@@ -20,7 +20,6 @@ Implemented:
 Not implemented yet:
 
 - Real database.
-- Actual Telegram bot webhook handlers.
 - Real Telegram post fetching/scraping.
 - Scheduled random/final checks.
 - Production wallet signature auth.
@@ -84,18 +83,26 @@ For local development, use mock USDC. Run Anvil in one terminal:
 anvil
 ```
 
-Use one of Anvil's printed private keys as `DEPLOYER_PRIVATE_KEY`, then deploy mock USDC and escrow:
+Create `chain/.env` from `chain/.env.example`, then use one of Anvil's printed private keys as `DEPLOYER_PRIVATE_KEY`.
 
 ```sh
-pnpm deploy:local
+cp chain/.env.example chain/.env
 ```
 
-The deploy scripts automatically load the root `.env` file before running Foundry. Put local deploy values there:
+Edit `chain/.env`:
 
 ```txt
 RPC_URL=http://127.0.0.1:8545
 DEPLOYER_PRIVATE_KEY=0x...
 ```
+
+Then deploy mock USDC and escrow:
+
+```sh
+pnpm deploy:local
+```
+
+The chain deploy scripts automatically load `chain/.env` before running Foundry.
 
 `DeployLocal.s.sol` deploys:
 
@@ -111,11 +118,14 @@ INITIAL_USDC_RECIPIENT=0x...    # defaults to deployer
 INITIAL_USDC_MINT=1000000000000 # defaults to 1,000,000 USDC with 6 decimals
 ```
 
-After deployment, put the emitted/deployed addresses into your env:
+After deployment, put the emitted/deployed addresses into the server and client env files:
 
 ```txt
+# server/.env
 ESCROW_CONTRACT_ADDRESS=0x...
 USDC_TOKEN_ADDRESS=0x...
+
+# client/.env
 VITE_ESCROW_CONTRACT_ADDRESS=0x...
 VITE_USDC_TOKEN_ADDRESS=0x...
 ```
@@ -125,6 +135,7 @@ VITE_USDC_TOKEN_ADDRESS=0x...
 For Ethereum Sepolia, deploy the escrow with:
 
 ```txt
+# chain/.env
 RPC_URL=https://...
 DEPLOYER_PRIVATE_KEY=0x...
 VERIFIER_ADDRESS=0x...
@@ -182,6 +193,7 @@ External adapters:
 - `http/` Express routes
 - `persistence/` in-memory repositories
 - `blockchain/viem/` viem escrow gateway
+- `telegram/` Telegram long-polling bot adapter
 
 ```txt
 server/src/app.ts
@@ -220,6 +232,36 @@ The server intentionally uses:
 - `tsc --noEmit` for build checks
 - no `ts-node`
 - no `nodemon`
+
+### Telegram Bot: Long Polling
+
+For local development, the server uses Telegram `getUpdates` long polling. You do not need a public tunnel or webhook URL for this mode.
+
+Set these in `server/.env`:
+
+```txt
+TELEGRAM_BOT_MODE=polling
+TELEGRAM_BOT_TOKEN=
+```
+
+Then run:
+
+```sh
+pnpm --filter server dev
+```
+
+The bot currently handles a small command set:
+
+```txt
+/start
+/help
+/link
+/register_channel
+/balance
+/my_campaigns
+```
+
+Webhook support can be added later for production. For now, leave `TELEGRAM_BOT_MODE=polling` locally.
 
 ## Client
 
@@ -309,17 +351,52 @@ pnpm --filter client dev
 
 ## Environment Variables
 
+Environment files are split by package. Do not put all runtime values in the repo root `.env`.
+
+Use these files:
+
+```txt
+chain/.env
+server/.env
+client/.env
+```
+
+Commit the example files, not real `.env` files:
+
+```txt
+chain/.env.example
+server/.env.example
+client/.env.example
+```
+
+Chain:
+
+```txt
+RPC_URL=http://127.0.0.1:8545
+CHAIN_ID=31337
+DEPLOYER_PRIVATE_KEY=
+VERIFIER_ADDRESS=
+INITIAL_USDC_RECIPIENT=
+INITIAL_USDC_MINT=1000000000000
+ETHERSCAN_API_KEY=
+```
+
 Server:
 
 ```txt
 PORT=3001
 CLIENT_URL=http://localhost:5173
 SERVER_URL=http://localhost:3001
-RPC_URL=
+RPC_URL=http://127.0.0.1:8545
 CHAIN_ID=31337
 ESCROW_CONTRACT_ADDRESS=
 USDC_TOKEN_ADDRESS=
 VERIFIER_PRIVATE_KEY=
+TELEGRAM_BOT_MODE=polling
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+DATABASE_URL=
+OPENAI_API_KEY=
 ```
 
 Client:
@@ -364,7 +441,7 @@ Direction:
 
 - Replace in-memory repositories with a real database adapter later.
 - Keep viem isolated behind `BlockchainGateway`.
-- Add Telegram as another adapter.
+- Expand the Telegram adapter from simple long polling commands into the full offer/channel/campaign flow.
 - Add OpenAI/agent calls as application services or outbound ports.
 - Keep contract settlement deterministic and outside direct AI control.
 

@@ -87,10 +87,14 @@ anvil
 Use one of Anvil's printed private keys as `DEPLOYER_PRIVATE_KEY`, then deploy mock USDC and escrow:
 
 ```sh
-export RPC_URL=http://127.0.0.1:8545
-export DEPLOYER_PRIVATE_KEY=0x...
-
 pnpm deploy:local
+```
+
+The deploy scripts automatically load the root `.env` file before running Foundry. Put local deploy values there:
+
+```txt
+RPC_URL=http://127.0.0.1:8545
+DEPLOYER_PRIVATE_KEY=0x...
 ```
 
 `DeployLocal.s.sol` deploys:
@@ -120,12 +124,16 @@ VITE_USDC_TOKEN_ADDRESS=0x...
 
 For Ethereum Sepolia, deploy the escrow with:
 
-```sh
-export RPC_URL=https://...
-export DEPLOYER_PRIVATE_KEY=0x...
-export VERIFIER_ADDRESS=0x...
-export ETHERSCAN_API_KEY=...
+```txt
+RPC_URL=https://...
+DEPLOYER_PRIVATE_KEY=0x...
+VERIFIER_ADDRESS=0x...
+ETHERSCAN_API_KEY=...
+```
 
+Then run:
+
+```sh
 pnpm deploy:sepolia
 ```
 

@@ -1,4 +1,4 @@
-import { Campaign, CampaignIntakeResult } from '../domain/types';
+import { Campaign, CampaignIntakeResult } from '../../domain/types';
 
 export function extractCampaignIntake(message: string): CampaignIntakeResult {
   const channel = message.match(/@([a-zA-Z0-9_]{5,})/)?.[0];

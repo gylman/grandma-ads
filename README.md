@@ -44,6 +44,7 @@ chain/src/MockUSDC.sol
 chain/script/DeployLocal.s.sol
 chain/script/DeployMockUSDC.s.sol
 chain/script/DeploySepoliaEscrow.s.sol
+chain/script/MintMockUSDC.s.sol
 chain/test/AdEscrow.t.sol
 chain/foundry.toml
 ```
@@ -129,6 +130,42 @@ USDC_TOKEN_ADDRESS=0x...
 VITE_ESCROW_CONTRACT_ADDRESS=0x...
 VITE_USDC_TOKEN_ADDRESS=0x...
 ```
+
+To mint local mock USDC to one or more wallets, put the token address and mint file in `chain/.env`:
+
+```txt
+USDC_TOKEN_ADDRESS=0x...
+MINTS_FILE=mint.mock-usdc.json
+```
+
+Create `chain/mint.mock-usdc.json` from the example:
+
+```sh
+cp chain/mint.mock-usdc.example.json chain/mint.mock-usdc.json
+```
+
+Edit the JSON file:
+
+```json
+[
+  {
+    "account": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "amount": "10000"
+  },
+  {
+    "account": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "amount": "2500.5"
+  }
+]
+```
+
+Amounts are human USDC amounts. The script converts them to 6-decimal base units. Then run:
+
+```sh
+pnpm mint:mock-usdc
+```
+
+The mint transaction must be sent by the `MockUSDC` owner. For local deployments, that is usually the same account as `DEPLOYER_PRIVATE_KEY`.
 
 ### Sepolia Contract Deployment
 
@@ -376,8 +413,10 @@ RPC_URL=http://127.0.0.1:8545
 CHAIN_ID=31337
 DEPLOYER_PRIVATE_KEY=
 VERIFIER_ADDRESS=
+USDC_TOKEN_ADDRESS=
 INITIAL_USDC_RECIPIENT=
 INITIAL_USDC_MINT=1000000000000
+MINTS_FILE=mint.mock-usdc.json
 ETHERSCAN_API_KEY=
 ```
 

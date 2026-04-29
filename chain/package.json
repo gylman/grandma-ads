@@ -8,6 +8,11 @@
     "deploy:mock-usdc": "set -a; [ ! -f .env ] || . .env; set +a; forge script script/DeployMockUSDC.s.sol:DeployMockUSDC --rpc-url ${RPC_URL:-http://127.0.0.1:8545} --broadcast",
     "deploy:sepolia": "set -a; [ ! -f .env ] || . .env; set +a; forge script script/DeploySepoliaEscrow.s.sol:DeploySepoliaEscrow --rpc-url $RPC_URL --broadcast --verify",
     "fmt": "forge fmt",
+    "mint:mock-usdc": "node scripts/mintMockUsdc.mjs",
     "test": "forge test --offline"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "viem": "^2.48.4"
   }
 }

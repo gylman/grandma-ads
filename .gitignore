@@ -146,3 +146,4 @@ vite.config.ts.timestamp-*
 chain/cache/
 chain/out/
 chain/broadcast/
+chain/mint.mock-usdc.json

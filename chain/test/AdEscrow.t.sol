@@ -2,50 +2,10 @@
 pragma solidity ^0.8.24;
 
 import {AdEscrow} from "../src/AdEscrow.sol";
-
-contract MockERC20 {
-    string public name = "Mock USDC";
-    string public symbol = "mUSDC";
-    uint8 public decimals = 6;
-
-    mapping(address account => uint256 amount) public balanceOf;
-    mapping(address owner => mapping(address spender => uint256 amount)) public allowance;
-
-    function mint(address to, uint256 amount) external {
-        balanceOf[to] += amount;
-    }
-
-    function approve(address spender, uint256 amount) external returns (bool) {
-        allowance[msg.sender][spender] = amount;
-        return true;
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
-        uint256 senderBalance = balanceOf[msg.sender];
-        require(senderBalance >= amount, "ERC20: insufficient balance");
-
-        balanceOf[msg.sender] = senderBalance - amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        uint256 currentAllowance = allowance[from][msg.sender];
-        require(currentAllowance >= amount, "ERC20: insufficient allowance");
-
-        allowance[from][msg.sender] = currentAllowance - amount;
-
-        uint256 fromBalance = balanceOf[from];
-        require(fromBalance >= amount, "ERC20: insufficient balance");
-
-        balanceOf[from] = fromBalance - amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-}
+import {MockUSDC} from "../src/MockUSDC.sol";
 
 contract Actor {
-    function approve(MockERC20 token, address spender, uint256 amount) external {
+    function approve(MockUSDC token, address spender, uint256 amount) external {
         token.approve(spender, amount);
     }
 
@@ -85,14 +45,14 @@ contract AdEscrowTest {
     uint256 private constant CAMPAIGN_AMOUNT = 250e6;
     uint256 private constant DURATION = 1 days;
 
-    MockERC20 private token;
+    MockUSDC private token;
     AdEscrow private escrow;
     Actor private advertiser;
     Actor private poster;
     Actor private outsider;
 
     function setUp() public {
-        token = new MockERC20();
+        token = new MockUSDC();
         escrow = new AdEscrow(address(this));
         advertiser = new Actor();
         poster = new Actor();

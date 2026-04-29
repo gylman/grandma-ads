@@ -41,6 +41,10 @@ Look here:
 
 ```txt
 chain/src/AdEscrow.sol
+chain/src/MockUSDC.sol
+chain/script/DeployLocal.s.sol
+chain/script/DeployMockUSDC.s.sol
+chain/script/DeploySepoliaEscrow.s.sol
 chain/test/AdEscrow.t.sol
 chain/foundry.toml
 ```
@@ -71,6 +75,68 @@ Format Solidity:
 ```sh
 pnpm --filter chain fmt
 ```
+
+### Local Contract Deployment
+
+For local development, use mock USDC. Run Anvil in one terminal:
+
+```sh
+anvil
+```
+
+Use one of Anvil's printed private keys as `DEPLOYER_PRIVATE_KEY`, then deploy mock USDC and escrow:
+
+```sh
+export RPC_URL=http://127.0.0.1:8545
+export DEPLOYER_PRIVATE_KEY=0x...
+
+pnpm deploy:local
+```
+
+`DeployLocal.s.sol` deploys:
+
+- `MockUSDC`
+- `AdEscrow`
+- an initial mock USDC balance for `INITIAL_USDC_RECIPIENT`
+
+Optional env vars:
+
+```txt
+VERIFIER_ADDRESS=0x...          # defaults to deployer
+INITIAL_USDC_RECIPIENT=0x...    # defaults to deployer
+INITIAL_USDC_MINT=1000000000000 # defaults to 1,000,000 USDC with 6 decimals
+```
+
+After deployment, put the emitted/deployed addresses into your env:
+
+```txt
+ESCROW_CONTRACT_ADDRESS=0x...
+USDC_TOKEN_ADDRESS=0x...
+VITE_ESCROW_CONTRACT_ADDRESS=0x...
+VITE_USDC_TOKEN_ADDRESS=0x...
+```
+
+### Sepolia Contract Deployment
+
+For Ethereum Sepolia, deploy the escrow with:
+
+```sh
+export RPC_URL=https://...
+export DEPLOYER_PRIVATE_KEY=0x...
+export VERIFIER_ADDRESS=0x...
+export ETHERSCAN_API_KEY=...
+
+pnpm deploy:sepolia
+```
+
+The escrow contract does not hardcode a token address. The server/client decide which ERC-20 token address to use through env vars.
+
+For Sepolia demos, you have two choices:
+
+- Use a real/test USDC token address for Sepolia if you have one and can get funds.
+- Deploy `MockUSDC` on Sepolia with `pnpm deploy:mock-usdc` and use that token address while testing.
+
+Do not use `MockUSDC` as a production token.
 
 ## Server
 

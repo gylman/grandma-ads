@@ -10,8 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.100.6",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "viem": "^2.48.4",
+    "wagmi": "^3.6.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

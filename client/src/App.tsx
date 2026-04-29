@@ -1,26 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { erc20Abi, formatUnits, isAddress, parseUnits } from 'viem'
+import { useAccount, useConnect, useReadContract, useWriteContract } from 'wagmi'
 import './App.css'
+import { escrowAbi } from './blockchain/escrowAbi'
 import { createCampaign, createUser, getHealth, listCampaigns, registerChannel } from './lib/api'
 import type { ApiCampaign, ApiChannel } from './lib/api'
 import { appConfig } from './lib/config'
-import {
-  approveTokenSpend,
-  connectWallet,
-  depositToEscrow,
-  formatUnits,
-  getEthereumProvider,
-  parseUnits,
-  readEscrowBalance,
-  withdrawFromEscrow,
-} from './lib/contract'
 
 const tokenDecimals = 6
 const defaultDurationSeconds = 86_400
+const zeroAddress = '0x0000000000000000000000000000000000000000' as const
 
 function App() {
-  const [account, setAccount] = useState('')
   const [userId, setUserId] = useState('')
-  const [balance, setBalance] = useState<bigint | null>(null)
   const [amount, setAmount] = useState('25')
   const [serverOnline, setServerOnline] = useState(false)
   const [busy, setBusy] = useState('')
@@ -31,30 +23,55 @@ function App() {
   const [campaignText, setCampaignText] = useState('Try our app today. Simple sponsored posts, escrow-backed payments.')
   const [campaignBudget, setCampaignBudget] = useState('100 USDC')
 
-  const provider = useMemo(() => getEthereumProvider(), [])
-  const contractReady = Boolean(appConfig.escrowContractAddress && appConfig.usdcTokenAddress)
-  const shortAccount = account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Not connected'
+  const { address, isConnected } = useAccount()
+  const { connectors, connectAsync } = useConnect()
+  const { writeContractAsync } = useWriteContract()
+
+  const escrowAddress = isAddress(appConfig.escrowContractAddress) ? appConfig.escrowContractAddress : zeroAddress
+  const tokenAddress = isAddress(appConfig.usdcTokenAddress) ? appConfig.usdcTokenAddress : zeroAddress
+  const contractReady = escrowAddress !== zeroAddress && tokenAddress !== zeroAddress
+  const shortAccount = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not connected'
+
+  const {
+    data: balance,
+    refetch: refetchBalance,
+  } = useReadContract({
+    address: escrowAddress,
+    abi: escrowAbi,
+    functionName: 'balances',
+    args: [address ?? zeroAddress, tokenAddress],
+    query: {
+      enabled: Boolean(address && contractReady),
+    },
+  })
 
   useEffect(() => {
     getHealth().then(setServerOnline).catch(() => setServerOnline(false))
     listCampaigns().then(setCampaigns).catch(() => setCampaigns([]))
   }, [])
 
+  useEffect(() => {
+    if (!address) return
+
+    createUser(address)
+      .then((response) => {
+        const createdUser = response as { user?: { id?: string } }
+        setUserId(createdUser.user?.id ?? '')
+        setNotice('Wallet connected.')
+      })
+      .catch((error) => setNotice(error instanceof Error ? error.message : 'Wallet sync failed.'))
+  }, [address])
+
   async function handleConnect() {
-    if (!provider) {
-      setNotice('No injected wallet found.')
+    const connector = connectors[0]
+    if (!connector) {
+      setNotice('No wallet connector found.')
       return
     }
 
     try {
       setBusy('wallet')
-      const wallet = await connectWallet(provider)
-      const response = await createUser(wallet)
-      const createdUser = response as { user?: { id?: string } }
-      setAccount(wallet)
-      setUserId(createdUser.user?.id ?? '')
-      setNotice('Wallet connected.')
-      await refreshBalance(wallet)
+      await connectAsync({ connector })
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Wallet connection failed.')
     } finally {
@@ -62,30 +79,17 @@ function App() {
     }
   }
 
-  async function refreshBalance(wallet = account) {
-    if (!provider || !wallet || !contractReady) return
-
-    const current = await readEscrowBalance({
-      provider,
-      escrowAddress: appConfig.escrowContractAddress,
-      userAddress: wallet,
-      tokenAddress: appConfig.usdcTokenAddress,
-    })
-    setBalance(current)
-  }
-
   async function handleApprove() {
-    if (!provider || !account) return
+    if (!address) return
 
     try {
       setBusy('approve')
       const parsedAmount = parseUnits(amount, tokenDecimals)
-      await approveTokenSpend({
-        provider,
-        from: account,
-        tokenAddress: appConfig.usdcTokenAddress,
-        spenderAddress: appConfig.escrowContractAddress,
-        amount: parsedAmount,
+      await writeContractAsync({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [escrowAddress, parsedAmount],
       })
       setNotice('Approval submitted.')
     } catch (error) {
@@ -96,19 +100,18 @@ function App() {
   }
 
   async function handleDeposit() {
-    if (!provider || !account) return
+    if (!address) return
 
     try {
       setBusy('deposit')
-      await depositToEscrow({
-        provider,
-        from: account,
-        escrowAddress: appConfig.escrowContractAddress,
-        tokenAddress: appConfig.usdcTokenAddress,
-        amount: parseUnits(amount, tokenDecimals),
+      await writeContractAsync({
+        address: escrowAddress,
+        abi: escrowAbi,
+        functionName: 'deposit',
+        args: [tokenAddress, parseUnits(amount, tokenDecimals)],
       })
       setNotice('Deposit submitted.')
-      await refreshBalance()
+      await refetchBalance()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Deposit failed.')
     } finally {
@@ -117,19 +120,18 @@ function App() {
   }
 
   async function handleWithdraw() {
-    if (!provider || !account) return
+    if (!address) return
 
     try {
       setBusy('withdraw')
-      await withdrawFromEscrow({
-        provider,
-        from: account,
-        escrowAddress: appConfig.escrowContractAddress,
-        tokenAddress: appConfig.usdcTokenAddress,
-        amount: parseUnits(amount, tokenDecimals),
+      await writeContractAsync({
+        address: escrowAddress,
+        abi: escrowAbi,
+        functionName: 'withdraw',
+        args: [tokenAddress, parseUnits(amount, tokenDecimals)],
       })
       setNotice('Withdrawal submitted.')
-      await refreshBalance()
+      await refetchBalance()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Withdrawal failed.')
     } finally {
@@ -156,7 +158,7 @@ function App() {
   }
 
   async function handleCreateCampaign() {
-    if (!account || !userId) {
+    if (!address || !userId) {
       setNotice('Connect a wallet before creating a campaign.')
       return
     }
@@ -165,12 +167,12 @@ function App() {
       setBusy('campaign')
       const nextCampaign = await createCampaign({
         advertiserUserId: userId,
-        advertiserWalletAddress: account,
+        advertiserWalletAddress: address,
         amount: campaignBudget,
         durationSeconds: defaultDurationSeconds,
         targetTelegramChannelUsername: channel,
         requestedText: campaignText,
-        tokenAddress: appConfig.usdcTokenAddress,
+        tokenAddress,
       })
       setCampaigns((current) => [nextCampaign, ...current])
       setNotice('Campaign draft created.')
@@ -189,7 +191,7 @@ function App() {
           <h1>Sponsored posts, locked funds, clear delivery.</h1>
         </div>
         <button type="button" onClick={handleConnect} disabled={busy === 'wallet'}>
-          {account ? shortAccount : 'Connect wallet'}
+          {isConnected ? shortAccount : 'Connect wallet'}
         </button>
       </header>
 
@@ -203,7 +205,7 @@ function App() {
       <section className="metrics">
         <article>
           <span>Available balance</span>
-          <strong>{balance === null ? '0' : formatUnits(balance, tokenDecimals)} USDC</strong>
+          <strong>{balance === undefined ? '0' : formatUnits(balance, tokenDecimals)} USDC</strong>
         </article>
         <article>
           <span>Locked campaigns</span>
@@ -223,13 +225,13 @@ function App() {
             <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
           </label>
           <div className="button-row">
-            <button type="button" onClick={handleApprove} disabled={!account || !contractReady || busy === 'approve'}>
+            <button type="button" onClick={handleApprove} disabled={!address || !contractReady || busy === 'approve'}>
               Approve
             </button>
-            <button type="button" onClick={handleDeposit} disabled={!account || !contractReady || busy === 'deposit'}>
+            <button type="button" onClick={handleDeposit} disabled={!address || !contractReady || busy === 'deposit'}>
               Deposit
             </button>
-            <button type="button" onClick={handleWithdraw} disabled={!account || !contractReady || busy === 'withdraw'}>
+            <button type="button" onClick={handleWithdraw} disabled={!address || !contractReady || busy === 'withdraw'}>
               Withdraw
             </button>
           </div>

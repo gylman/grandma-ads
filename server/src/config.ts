@@ -11,6 +11,8 @@ export type AppConfig = {
   verifierPrivateKey: string;
   telegramBotToken: string;
   telegramBotMode: 'off' | 'polling';
+  custodialDevMode: boolean;
+  devWalletMinterPrivateKey: string;
 };
 
 export const config: AppConfig = {
@@ -24,6 +26,8 @@ export const config: AppConfig = {
   verifierPrivateKey: process.env.VERIFIER_PRIVATE_KEY ?? '',
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
   telegramBotMode: parseTelegramBotMode(process.env.TELEGRAM_BOT_MODE, process.env.TELEGRAM_BOT_TOKEN),
+  custodialDevMode: process.env.CUSTODIAL_DEV_MODE === 'true',
+  devWalletMinterPrivateKey: process.env.DEV_WALLET_MINTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? '',
 };
 
 function parseTelegramBotMode(mode: string | undefined, token: string | undefined): AppConfig['telegramBotMode'] {

@@ -4,6 +4,8 @@ import { extractCampaignIntake, generatePosterOffer } from '../services/agentSer
 import { BlockchainGateway } from '../ports/blockchainGateway';
 import { CampaignRepository, CreateDraftCampaignInput, SubmitPostInput } from '../ports/campaignRepository';
 import { ChannelRepository, RegisterChannelInput } from '../ports/channelRepository';
+import { DevWalletGateway } from '../ports/devWalletGateway';
+import { DevWalletRepository } from '../ports/devWalletRepository';
 import { UpsertUserInput, UserRepository } from '../ports/userRepository';
 
 export type AppUseCases = ReturnType<typeof createAppUseCases>;
@@ -13,8 +15,17 @@ export function createAppUseCases(dependencies: {
   channels: ChannelRepository;
   campaigns: CampaignRepository;
   blockchain: BlockchainGateway;
+  devWallets: DevWalletRepository;
+  devWalletGateway: DevWalletGateway;
 }) {
-  const { users, channels, campaigns, blockchain } = dependencies;
+  const { users, channels, campaigns, blockchain, devWallets, devWalletGateway } = dependencies;
+
+  function ensureDevWallet(telegramUserId: string) {
+    const existing = devWallets.findByTelegramUserId(telegramUserId);
+    if (existing) return existing;
+
+    return devWallets.save(devWalletGateway.generateWallet(telegramUserId));
+  }
 
   return {
     health() {
@@ -80,6 +91,43 @@ export function createAppUseCases(dependencies: {
 
     submitPostForVerification(input: SubmitPostInput) {
       return campaigns.submitPostForVerification(input);
+    },
+
+    ensureDevWallet(telegramUserId: string) {
+      return ensureDevWallet(telegramUserId);
+    },
+
+    getDevWallet(telegramUserId: string) {
+      return devWallets.findByTelegramUserId(telegramUserId);
+    },
+
+    getDevWalletBalance(telegramUserId: string) {
+      const wallet = devWallets.findByTelegramUserId(telegramUserId);
+      if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_wallet first.');
+      return devWalletGateway.getBalance(wallet);
+    },
+
+    async mintDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
+      const wallet = ensureDevWallet(telegramUserId);
+      const txHash = await devWalletGateway.mintMockUsdc(wallet.address, amount);
+      return { wallet, txHash };
+    },
+
+    async depositDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
+      const wallet = devWallets.findByTelegramUserId(telegramUserId);
+      if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_wallet first.');
+
+      const approvalTxHash = await devWalletGateway.approveEscrow(wallet, amount);
+      const depositTxHash = await devWalletGateway.deposit(wallet, amount);
+      return { wallet, approvalTxHash, depositTxHash };
+    },
+
+    async withdrawDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
+      const wallet = devWallets.findByTelegramUserId(telegramUserId);
+      if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_wallet first.');
+
+      const txHash = await devWalletGateway.withdraw(wallet, amount);
+      return { wallet, txHash };
     },
   };
 }

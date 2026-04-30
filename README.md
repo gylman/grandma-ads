@@ -300,6 +300,39 @@ The bot currently handles a small command set:
 
 Webhook support can be added later for production. For now, leave `TELEGRAM_BOT_MODE=polling` locally.
 
+### Dev Custodial Wallet Mode
+
+For local development only, the bot can generate a test wallet for each Telegram user and sign local Anvil transactions from the server. This is useful for exercising the full bot/server/chain lifecycle before the production wallet handoff is finished.
+
+Do not use this mode with real user keys or real funds.
+
+Enable it in `server/.env`:
+
+```txt
+CUSTODIAL_DEV_MODE=true
+DEV_WALLET_MINTER_PRIVATE_KEY=0x...
+```
+
+`DEV_WALLET_MINTER_PRIVATE_KEY` must be the owner of the local `MockUSDC` contract if you want `/dev_mint` to work. In local Anvil, this is usually the same key that deployed `MockUSDC`.
+
+Dev bot commands:
+
+```txt
+/dev_wallet
+/dev_balance
+/dev_mint 1000
+/dev_deposit 100
+/dev_withdraw 25
+```
+
+What they do:
+
+- `/dev_wallet`: creates or shows the Telegram user's generated test wallet.
+- `/dev_mint 1000`: mints 1,000 mock USDC to that generated wallet.
+- `/dev_deposit 100`: approves escrow and deposits 100 mock USDC.
+- `/dev_withdraw 25`: withdraws 25 mock USDC from escrow.
+- `/dev_balance`: shows wallet token balance and available escrow balance.
+
 ## Client
 
 Look here:
@@ -431,6 +464,8 @@ CHAIN_ID=31337
 ESCROW_CONTRACT_ADDRESS=
 USDC_TOKEN_ADDRESS=
 VERIFIER_PRIVATE_KEY=
+CUSTODIAL_DEV_MODE=false
+DEV_WALLET_MINTER_PRIVATE_KEY=
 TELEGRAM_BOT_MODE=polling
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=

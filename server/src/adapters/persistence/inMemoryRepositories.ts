@@ -2,6 +2,7 @@ import { createCampaign, transitionCampaign } from '../../domain/campaign';
 import { verifyPostSnapshot } from '../../domain/verification';
 import { CampaignRepository, CreateDraftCampaignInput, SubmitPostInput } from '../../application/ports/campaignRepository';
 import { ChannelRepository, RegisterChannelInput } from '../../application/ports/channelRepository';
+import { DevWallet, DevWalletRepository } from '../../application/ports/devWalletRepository';
 import { UpsertUserInput, UserRepository } from '../../application/ports/userRepository';
 import { Campaign, Channel, ChannelStatus, User, VerificationCheck } from '../../domain/types';
 
@@ -15,11 +16,13 @@ export function createInMemoryRepositories(): {
   users: UserRepository;
   channels: ChannelRepository;
   campaigns: CampaignRepository;
+  devWallets: DevWalletRepository;
 } {
   const users = new Map<string, User>();
   const channels = new Map<string, Channel>();
   const campaigns = new Map<string, Campaign>();
   const verificationChecks = new Map<string, VerificationCheck>();
+  const devWallets = new Map<string, DevWallet>();
 
   return {
     users: {
@@ -157,6 +160,17 @@ export function createInMemoryRepositories(): {
         });
 
         return { check, result };
+      },
+    },
+
+    devWallets: {
+      findByTelegramUserId(telegramUserId: string): DevWallet | null {
+        return devWallets.get(telegramUserId) ?? null;
+      },
+
+      save(wallet: DevWallet): DevWallet {
+        devWallets.set(wallet.telegramUserId, wallet);
+        return wallet;
       },
     },
   };

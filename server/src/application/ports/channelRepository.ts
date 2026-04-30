@@ -7,7 +7,7 @@ export type RegisterChannelInput = {
 };
 
 export interface ChannelRepository {
-  register(input: RegisterChannelInput): Channel;
-  updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Channel;
-  list(ownerUserId?: string): Channel[];
+  register(input: RegisterChannelInput): Promise<Channel>;
+  updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Promise<Channel>;
+  list(ownerUserId?: string): Promise<Channel[]>;
 }

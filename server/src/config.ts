@@ -4,6 +4,9 @@ export type AppConfig = {
   port: number;
   clientUrl: string;
   serverUrl: string;
+  persistenceMode: 'inmemory' | 'mongodb';
+  databaseUrl: string;
+  databaseName: string;
   rpcUrl: string;
   chainId: number;
   escrowContractAddress: string;
@@ -13,12 +16,16 @@ export type AppConfig = {
   telegramBotMode: 'off' | 'polling';
   custodialDevMode: boolean;
   devWalletMinterPrivateKey: string;
+  devWalletEthTopUpAmount: bigint;
 };
 
 export const config: AppConfig = {
   port: Number(process.env.PORT ?? 3001),
   clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
   serverUrl: process.env.SERVER_URL ?? 'http://localhost:3001',
+  persistenceMode: parsePersistenceMode(process.env.PERSISTENCE_MODE),
+  databaseUrl: process.env.DATABASE_URL ?? '',
+  databaseName: process.env.DATABASE_NAME ?? 'grandma_ads',
   rpcUrl: process.env.RPC_URL ?? '',
   chainId: Number(process.env.CHAIN_ID ?? 31337),
   escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS ?? '',
@@ -28,9 +35,21 @@ export const config: AppConfig = {
   telegramBotMode: parseTelegramBotMode(process.env.TELEGRAM_BOT_MODE, process.env.TELEGRAM_BOT_TOKEN),
   custodialDevMode: process.env.CUSTODIAL_DEV_MODE === 'true',
   devWalletMinterPrivateKey: process.env.DEV_WALLET_MINTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? '',
+  devWalletEthTopUpAmount: parseEthAmount(process.env.DEV_WALLET_ETH_TOP_UP_AMOUNT ?? '0.05'),
 };
 
 function parseTelegramBotMode(mode: string | undefined, token: string | undefined): AppConfig['telegramBotMode'] {
   if (mode === 'off' || mode === 'polling') return mode;
   return token ? 'polling' : 'off';
+}
+
+function parsePersistenceMode(mode: string | undefined): AppConfig['persistenceMode'] {
+  if (mode === 'mongodb') return 'mongodb';
+  return 'inmemory';
+}
+
+function parseEthAmount(value: string): bigint {
+  const [whole, fraction = ''] = value.split('.');
+  const paddedFraction = fraction.padEnd(18, '0').slice(0, 18);
+  return BigInt(whole || '0') * 10n ** 18n + BigInt(paddedFraction || '0');
 }

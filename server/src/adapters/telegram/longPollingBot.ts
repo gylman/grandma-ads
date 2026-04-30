@@ -41,6 +41,8 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
 
   let stopped = false;
   let offset = 0;
+  const pendingChannelRegistration = new Set<number>();
+  const pendingChannelVerification = new Map<number, string>();
   const apiBaseUrl = `https://api.telegram.org/bot${config.telegramBotToken}`;
 
   async function requestTelegram<T>(method: string, body: Record<string, unknown>): Promise<T> {
@@ -81,10 +83,116 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     }
   }
 
+  async function registerChannelFromText(chatId: number, telegramUserId: string, rawInput: string): Promise<void> {
+    const telegramChannelUsername = rawInput.trim();
+    if (!/^@[a-zA-Z0-9_]{5,}$/.test(telegramChannelUsername)) {
+      await sendMessage(chatId, 'Please send a valid channel username, for example @exampleChannel.');
+      return;
+    }
+
+    if (!config.custodialDevMode) {
+      await sendMessage(chatId, `Channel registration in bot is enabled in dev mode only right now. Use ${config.clientUrl} for wallet linking first.`);
+      return;
+    }
+
+    const wallet = await useCases.ensureDevWallet(telegramUserId);
+    const user = await useCases.upsertUser({
+      walletAddress: wallet.address,
+      telegramUserId,
+    });
+
+    const channel = await useCases.registerChannel({
+      ownerUserId: user.id,
+      telegramChannelUsername,
+    });
+    pendingChannelVerification.set(chatId, channel.id);
+
+    await sendMessage(
+      chatId,
+      [
+        `Channel registration created for ${telegramChannelUsername}.`,
+        `Verification code: ${channel.verificationCode}`,
+        '',
+        'Post this exact code in the channel, then submit the public post URL (verification step wiring is next).',
+      ].join('\n'),
+    );
+  }
+
+  async function verifyChannelFromPostUrl(chatId: number, telegramUserId: string, postUrl: string): Promise<boolean> {
+    if (!config.custodialDevMode) {
+      await sendMessage(chatId, 'Channel verification in bot is currently enabled in dev mode only.');
+      return false;
+    }
+
+    const wallet = await useCases.ensureDevWallet(telegramUserId);
+    const user = await useCases.getUserByWallet(wallet.address);
+    if (!user) {
+      await sendMessage(chatId, 'Please create a dev wallet first with /dev_wallet.');
+      return false;
+    }
+
+    const channels = await useCases.listChannels(user.id);
+    const pendingChannelId = pendingChannelVerification.get(chatId);
+    const pendingChannel =
+      (pendingChannelId ? channels.find((channel) => channel.id === pendingChannelId) : null) ??
+      channels
+        .filter((channel) => channel.status === 'PENDING')
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
+
+    if (!pendingChannel) {
+      await sendMessage(chatId, 'No pending channel verification found. Use /register_channel first.');
+      return false;
+    }
+
+    const expectedChannel = pendingChannel.telegramChannelUsername?.replace(/^@/, '').toLowerCase();
+    if (!expectedChannel || !pendingChannel.verificationCode) {
+      await sendMessage(chatId, 'Channel verification data is missing. Please register the channel again.');
+      return false;
+    }
+
+    const urlParts = parseTelegramPostUrl(postUrl);
+    if (!urlParts) {
+      await sendMessage(chatId, 'That is not a valid public Telegram post URL.');
+      return false;
+    }
+
+    if (urlParts.channel.toLowerCase() !== expectedChannel) {
+      await sendMessage(chatId, `URL channel does not match @${expectedChannel}.`);
+      return false;
+    }
+
+    const html = await fetchTelegramPostHtml(postUrl);
+    if (!html) {
+      await sendMessage(chatId, 'Could not fetch the post for verification. Make sure the channel and post are public.');
+      return false;
+    }
+
+    if (!html.includes(pendingChannel.verificationCode)) {
+      await sendMessage(chatId, 'Verification code was not found in that post. Please post the exact code and resend URL.');
+      return false;
+    }
+
+    await useCases.verifyChannel(pendingChannel.id, postUrl);
+    pendingChannelVerification.delete(chatId);
+    await sendMessage(chatId, `Channel verified: @${expectedChannel}`);
+    return true;
+  }
+
   async function handleMessage(message: TelegramMessage): Promise<void> {
     const text = message.text?.trim() ?? '';
     const chatId = message.chat.id;
     const telegramUserId = String(message.from?.id ?? chatId);
+
+    if (pendingChannelRegistration.has(chatId) && text.startsWith('@')) {
+      pendingChannelRegistration.delete(chatId);
+      await registerChannelFromText(chatId, telegramUserId, text);
+      return;
+    }
+
+    if (isTelegramPostUrl(text)) {
+      const handled = await verifyChannelFromPostUrl(chatId, telegramUserId, text);
+      if (handled) return;
+    }
 
     if (text.startsWith('/start')) {
       await sendMessage(chatId, startMessage(config.clientUrl));
@@ -112,7 +220,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
 
     if (text.startsWith('/dev_wallet')) {
       await runDevCommand(chatId, async () => {
-        const wallet = useCases.ensureDevWallet(telegramUserId);
+        const wallet = await useCases.ensureDevWallet(telegramUserId);
         await sendMessage(chatId, `Dev wallet:\n${wallet.address}\n\nThis is a local/test wallet generated by the server.`);
       });
       return;
@@ -178,12 +286,19 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     }
 
     if (text.startsWith('/register_channel')) {
+      const channelFromCommand = text.split(/\s+/)[1];
+      if (channelFromCommand && channelFromCommand.startsWith('@')) {
+        await registerChannelFromText(chatId, telegramUserId, channelFromCommand);
+        return;
+      }
+
+      pendingChannelRegistration.add(chatId);
       await sendMessage(chatId, 'Send the channel username you want to register, like @exampleChannel.');
       return;
     }
 
     if (text.startsWith('/my_campaigns')) {
-      const campaigns = useCases.listCampaigns();
+      const campaigns = await useCases.listCampaigns();
       if (campaigns.length === 0) {
         await sendMessage(chatId, 'No campaigns yet.');
         return;
@@ -244,6 +359,41 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
       stopped = true;
     },
   };
+}
+
+function isTelegramPostUrl(value: string): boolean {
+  return /^https?:\/\/t\.me\/[A-Za-z0-9_]+\/\d+$/i.test(value.trim());
+}
+
+function parseTelegramPostUrl(value: string): { channel: string; messageId: string } | null {
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.hostname !== 't.me') return null;
+
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parts.length !== 2) return null;
+    const [channel, messageId] = parts;
+    if (!/^\d+$/.test(messageId)) return null;
+
+    return { channel, messageId };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTelegramPostHtml(postUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(postUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; grandma-ads-bot/0.1)',
+      },
+    });
+
+    if (!response.ok) return null;
+    return response.text();
+  } catch {
+    return null;
+  }
 }
 
 function parseCommandAmount(text: string, defaultAmount?: string): bigint {

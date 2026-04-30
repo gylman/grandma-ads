@@ -20,11 +20,11 @@ export function createAppUseCases(dependencies: {
 }) {
   const { users, channels, campaigns, blockchain, devWallets, devWalletGateway } = dependencies;
 
-  function ensureDevWallet(telegramUserId: string) {
-    const existing = devWallets.findByTelegramUserId(telegramUserId);
+  async function ensureDevWallet(telegramUserId: string) {
+    const existing = await devWallets.findByTelegramUserId(telegramUserId);
     if (existing) return existing;
 
-    return devWallets.save(devWalletGateway.generateWallet(telegramUserId));
+    return await devWallets.save(devWalletGateway.generateWallet(telegramUserId));
   }
 
   return {
@@ -32,11 +32,11 @@ export function createAppUseCases(dependencies: {
       return { ok: true, service: 'grandma-ads-server' };
     },
 
-    upsertUser(input: UpsertUserInput) {
+    async upsertUser(input: UpsertUserInput) {
       return users.upsert(input);
     },
 
-    getUserByWallet(walletAddress: string) {
+    async getUserByWallet(walletAddress: string) {
       return users.findByWallet(walletAddress);
     },
 
@@ -44,15 +44,15 @@ export function createAppUseCases(dependencies: {
       return blockchain.getBalance(walletAddress, tokenAddress);
     },
 
-    registerChannel(input: RegisterChannelInput) {
+    async registerChannel(input: RegisterChannelInput) {
       return channels.register(input);
     },
 
-    listChannels(ownerUserId?: string) {
+    async listChannels(ownerUserId?: string) {
       return channels.list(ownerUserId);
     },
 
-    verifyChannel(channelId: string, postUrl?: string) {
+    async verifyChannel(channelId: string, postUrl?: string) {
       return channels.updateStatus(channelId, 'VERIFIED', postUrl);
     },
 
@@ -60,7 +60,7 @@ export function createAppUseCases(dependencies: {
       return { intake: extractCampaignIntake(message), safety: checkContentSafety(message) };
     },
 
-    createDraftCampaign(input: CreateDraftCampaignInput) {
+    async createDraftCampaign(input: CreateDraftCampaignInput) {
       const safety = checkContentSafety(input.requestedText);
       if (!safety.allowed) {
         const error = new Error('Campaign content is blocked');
@@ -71,50 +71,50 @@ export function createAppUseCases(dependencies: {
       return campaigns.createDraft(input);
     },
 
-    listCampaigns() {
+    async listCampaigns() {
       return campaigns.list();
     },
 
-    getCampaign(campaignId: string) {
+    async getCampaign(campaignId: string) {
       return campaigns.findById(campaignId);
     },
 
-    advanceCampaign(campaignId: string, status: CampaignStatus) {
+    async advanceCampaign(campaignId: string, status: CampaignStatus) {
       return campaigns.advance(campaignId, status);
     },
 
-    generatePosterOffer(campaignId: string) {
-      const campaign = campaigns.findById(campaignId);
+    async generatePosterOffer(campaignId: string) {
+      const campaign = await campaigns.findById(campaignId);
       if (!campaign) return null;
       return generatePosterOffer(campaign);
     },
 
-    submitPostForVerification(input: SubmitPostInput) {
+    async submitPostForVerification(input: SubmitPostInput) {
       return campaigns.submitPostForVerification(input);
     },
 
-    ensureDevWallet(telegramUserId: string) {
+    async ensureDevWallet(telegramUserId: string) {
       return ensureDevWallet(telegramUserId);
     },
 
-    getDevWallet(telegramUserId: string) {
+    async getDevWallet(telegramUserId: string) {
       return devWallets.findByTelegramUserId(telegramUserId);
     },
 
-    getDevWalletBalance(telegramUserId: string) {
-      const wallet = devWallets.findByTelegramUserId(telegramUserId);
+    async getDevWalletBalance(telegramUserId: string) {
+      const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_wallet first.');
       return devWalletGateway.getBalance(wallet);
     },
 
     async mintDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
-      const wallet = ensureDevWallet(telegramUserId);
+      const wallet = await ensureDevWallet(telegramUserId);
       const txHash = await devWalletGateway.mintMockUsdc(wallet.address, amount);
       return { wallet, txHash };
     },
 
     async depositDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
-      const wallet = devWallets.findByTelegramUserId(telegramUserId);
+      const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_wallet first.');
 
       const approvalTxHash = await devWalletGateway.approveEscrow(wallet, amount);
@@ -123,7 +123,7 @@ export function createAppUseCases(dependencies: {
     },
 
     async withdrawDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
-      const wallet = devWallets.findByTelegramUserId(telegramUserId);
+      const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_wallet first.');
 
       const txHash = await devWalletGateway.withdraw(wallet, amount);

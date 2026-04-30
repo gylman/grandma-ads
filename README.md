@@ -12,14 +12,14 @@ Implemented:
 
 - Foundry escrow contract with virtual balances and campaign settlement.
 - Server API with hexagonal architecture.
-- In-memory repositories for users, channels, campaigns, and verification checks.
+- Repository ports with pluggable persistence adapters (`inmemory` and MongoDB through Mongoose).
 - viem blockchain gateway on the server.
 - React client dashboard with wagmi wallet interactions.
 - Basic channel registration, campaign draft creation, content safety checks, and post verification primitives.
 
 Not implemented yet:
 
-- Real database.
+- Production-hardened database schema and migrations.
 - Real Telegram post fetching/scraping.
 - Scheduled random/final checks.
 - Production wallet signature auth.
@@ -228,7 +228,7 @@ server/src/adapters/
 External adapters:
 
 - `http/` Express routes
-- `persistence/` in-memory repositories
+- `persistence/` in-memory and Mongoose-backed MongoDB repository adapters
 - `blockchain/viem/` viem escrow gateway
 - `telegram/` Telegram long-polling bot adapter
 
@@ -311,9 +311,12 @@ Enable it in `server/.env`:
 ```txt
 CUSTODIAL_DEV_MODE=true
 DEV_WALLET_MINTER_PRIVATE_KEY=0x...
+DEV_WALLET_ETH_TOP_UP_AMOUNT=0.05
 ```
 
 `DEV_WALLET_MINTER_PRIVATE_KEY` must be the owner of the local `MockUSDC` contract if you want `/dev_mint` to work. In local Anvil, this is usually the same key that deployed `MockUSDC`.
+
+The same key also tops up generated dev wallets with a small amount of local ETH so they can pay gas for approve/deposit/withdraw transactions.
 
 Dev bot commands:
 
@@ -459,6 +462,9 @@ Server:
 PORT=3001
 CLIENT_URL=http://localhost:5173
 SERVER_URL=http://localhost:3001
+PERSISTENCE_MODE=inmemory
+DATABASE_URL=mongodb://127.0.0.1:27017
+DATABASE_NAME=grandma_ads
 RPC_URL=http://127.0.0.1:8545
 CHAIN_ID=31337
 ESCROW_CONTRACT_ADDRESS=
@@ -466,10 +472,10 @@ USDC_TOKEN_ADDRESS=
 VERIFIER_PRIVATE_KEY=
 CUSTODIAL_DEV_MODE=false
 DEV_WALLET_MINTER_PRIVATE_KEY=
+DEV_WALLET_ETH_TOP_UP_AMOUNT=0.05
 TELEGRAM_BOT_MODE=polling
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
-DATABASE_URL=
 OPENAI_API_KEY=
 ```
 
@@ -513,7 +519,7 @@ The server is organized so core product logic does not depend on Express, viem, 
 
 Direction:
 
-- Replace in-memory repositories with a real database adapter later.
+- Keep repository ports stable while switching adapters (`inmemory` or `mongodb`).
 - Keep viem isolated behind `BlockchainGateway`.
 - Expand the Telegram adapter from simple long polling commands into the full offer/channel/campaign flow.
 - Add OpenAI/agent calls as application services or outbound ports.

@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseUnits } from 'viem';
+import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseEther, parseUnits } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { foundry, sepolia } from 'viem/chains';
 import { DevWalletGateway } from '../../../application/ports/devWalletGateway';
@@ -76,40 +76,70 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
 
     approveEscrow(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
-      const account = privateKeyToAccount(wallet.privateKey);
+      return withGasTopUp(wallet, async () => {
+        const account = privateKeyToAccount(wallet.privateKey);
 
-      return createWalletClient({ account, chain, transport }).writeContract({
-        address: config.usdcTokenAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: 'approve',
-        args: [config.escrowContractAddress as `0x${string}`, amount],
+        return createWalletClient({ account, chain, transport }).writeContract({
+          address: config.usdcTokenAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [config.escrowContractAddress as `0x${string}`, amount],
+        });
       });
     },
 
     deposit(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
-      const account = privateKeyToAccount(wallet.privateKey);
+      return withGasTopUp(wallet, async () => {
+        const account = privateKeyToAccount(wallet.privateKey);
 
-      return createWalletClient({ account, chain, transport }).writeContract({
-        address: config.escrowContractAddress as `0x${string}`,
-        abi: adEscrowAbi,
-        functionName: 'deposit',
-        args: [config.usdcTokenAddress as `0x${string}`, amount],
+        return createWalletClient({ account, chain, transport }).writeContract({
+          address: config.escrowContractAddress as `0x${string}`,
+          abi: adEscrowAbi,
+          functionName: 'deposit',
+          args: [config.usdcTokenAddress as `0x${string}`, amount],
+        });
       });
     },
 
     withdraw(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
-      const account = privateKeyToAccount(wallet.privateKey);
+      return withGasTopUp(wallet, async () => {
+        const account = privateKeyToAccount(wallet.privateKey);
 
-      return createWalletClient({ account, chain, transport }).writeContract({
-        address: config.escrowContractAddress as `0x${string}`,
-        abi: adEscrowAbi,
-        functionName: 'withdraw',
-        args: [config.usdcTokenAddress as `0x${string}`, amount],
+        return createWalletClient({ account, chain, transport }).writeContract({
+          address: config.escrowContractAddress as `0x${string}`,
+          abi: adEscrowAbi,
+          functionName: 'withdraw',
+          args: [config.usdcTokenAddress as `0x${string}`, amount],
+        });
       });
     },
   };
+
+  async function withGasTopUp(wallet: DevWallet, action: () => Promise<`0x${string}`>): Promise<`0x${string}`> {
+    await ensureGas(wallet.address);
+    return action();
+  }
+
+  async function ensureGas(address: `0x${string}`): Promise<void> {
+    const balance = await publicClient.getBalance({ address });
+    const minimum = parseEther('0.01');
+
+    if (balance >= minimum) return;
+
+    if (!config.devWalletMinterPrivateKey) {
+      throw new Error('DEV_WALLET_MINTER_PRIVATE_KEY is required to top up dev wallet gas');
+    }
+
+    const funder = privateKeyToAccount(config.devWalletMinterPrivateKey as `0x${string}`);
+    const txHash = await createWalletClient({ account: funder, chain, transport }).sendTransaction({
+      to: address,
+      value: config.devWalletEthTopUpAmount,
+    });
+
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+  }
 }
 
 export function parseDevUsdcAmount(value: string): bigint {

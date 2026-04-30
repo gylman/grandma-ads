@@ -2,19 +2,20 @@ import express, { Express } from 'express';
 import { createHttpRouter } from './adapters/http/routes';
 import { createViemDevWalletGateway } from './adapters/blockchain/viem/devWalletGateway';
 import { createViemBlockchainGateway } from './adapters/blockchain/viem/viemBlockchainGateway';
-import { createInMemoryRepositories } from './adapters/persistence/inMemoryRepositories';
+import { createPersistenceAdapter } from './adapters/persistence/createPersistenceAdapter';
 import { config } from './config';
 import { createAppUseCases } from './application/useCases/createAppUseCases';
 
-export function createApp(): Express {
-  return createRuntime().app;
+export async function createApp(): Promise<Express> {
+  const runtime = await createRuntime();
+  return runtime.app;
 }
 
-export function createRuntime() {
-  const repositories = createInMemoryRepositories();
+export async function createRuntime() {
+  const persistence = await createPersistenceAdapter(config);
   const blockchain = createViemBlockchainGateway(config);
   const devWalletGateway = createViemDevWalletGateway(config);
-  const useCases = createAppUseCases({ ...repositories, blockchain, devWalletGateway });
+  const useCases = createAppUseCases({ ...persistence.repositories, blockchain, devWalletGateway });
 
   const app = express();
   app.use((req, res, next) => {
@@ -43,5 +44,11 @@ export function createRuntime() {
     res.json({ message: 'Grandma Ads server', health: '/health' });
   });
 
-  return { app, useCases };
+  return {
+    app,
+    useCases,
+    async close() {
+      await persistence.close();
+    },
+  };
 }

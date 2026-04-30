@@ -26,9 +26,9 @@ export type SubmitPostOutput = {
 };
 
 export interface CampaignRepository {
-  createDraft(input: CreateDraftCampaignInput): Campaign;
-  list(): Campaign[];
-  findById(campaignId: string): Campaign | null;
-  advance(campaignId: string, nextStatus: CampaignStatus): Campaign;
-  submitPostForVerification(input: SubmitPostInput): SubmitPostOutput;
+  createDraft(input: CreateDraftCampaignInput): Promise<Campaign>;
+  list(): Promise<Campaign[]>;
+  findById(campaignId: string): Promise<Campaign | null>;
+  advance(campaignId: string, nextStatus: CampaignStatus): Promise<Campaign>;
+  submitPostForVerification(input: SubmitPostInput): Promise<SubmitPostOutput>;
 }

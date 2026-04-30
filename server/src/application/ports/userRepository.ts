@@ -7,6 +7,6 @@ export type UpsertUserInput = {
 };
 
 export interface UserRepository {
-  upsert(input: UpsertUserInput): User;
-  findByWallet(walletAddress: string): User | null;
+  upsert(input: UpsertUserInput): Promise<User>;
+  findByWallet(walletAddress: string): Promise<User | null>;
 }

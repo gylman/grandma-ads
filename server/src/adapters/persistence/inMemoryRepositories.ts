@@ -26,7 +26,7 @@ export function createInMemoryRepositories(): {
 
   return {
     users: {
-      upsert(input: UpsertUserInput): User {
+      async upsert(input: UpsertUserInput): Promise<User> {
         const normalizedWallet = input.walletAddress.toLowerCase();
         const existing = [...users.values()].find((user) => user.walletAddress.toLowerCase() === normalizedWallet);
         const now = new Date();
@@ -54,13 +54,13 @@ export function createInMemoryRepositories(): {
         return user;
       },
 
-      findByWallet(walletAddress: string): User | null {
+      async findByWallet(walletAddress: string): Promise<User | null> {
         return [...users.values()].find((user) => user.walletAddress.toLowerCase() === walletAddress.toLowerCase()) ?? null;
       },
     },
 
     channels: {
-      register(input: RegisterChannelInput): Channel {
+      async register(input: RegisterChannelInput): Promise<Channel> {
         const now = new Date();
         const shortOwner = input.ownerUserId.replace(/\W/g, '').slice(-6).toUpperCase();
         const channel: Channel = {
@@ -80,7 +80,7 @@ export function createInMemoryRepositories(): {
         return channel;
       },
 
-      updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Channel {
+      async updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Promise<Channel> {
         const channel = channels.get(channelId);
         if (!channel) throw new Error('Channel not found');
 
@@ -95,28 +95,28 @@ export function createInMemoryRepositories(): {
         return updated;
       },
 
-      list(ownerUserId?: string): Channel[] {
+      async list(ownerUserId?: string): Promise<Channel[]> {
         const list = [...channels.values()];
         return ownerUserId ? list.filter((channel) => channel.ownerUserId === ownerUserId) : list;
       },
     },
 
     campaigns: {
-      createDraft(input: CreateDraftCampaignInput): Campaign {
+      async createDraft(input: CreateDraftCampaignInput): Promise<Campaign> {
         const campaign = createCampaign({ ...input, id: id('cmp') });
         campaigns.set(campaign.id, campaign);
         return campaign;
       },
 
-      list(): Campaign[] {
+      async list(): Promise<Campaign[]> {
         return [...campaigns.values()];
       },
 
-      findById(campaignId: string): Campaign | null {
+      async findById(campaignId: string): Promise<Campaign | null> {
         return campaigns.get(campaignId) ?? null;
       },
 
-      advance(campaignId, nextStatus): Campaign {
+      async advance(campaignId, nextStatus): Promise<Campaign> {
         const campaign = campaigns.get(campaignId);
         if (!campaign) throw new Error('Campaign not found');
 
@@ -125,7 +125,7 @@ export function createInMemoryRepositories(): {
         return updated;
       },
 
-      submitPostForVerification(input: SubmitPostInput) {
+      async submitPostForVerification(input: SubmitPostInput) {
         const campaign = campaigns.get(input.campaignId);
         if (!campaign) throw new Error('Campaign not found');
 
@@ -164,11 +164,11 @@ export function createInMemoryRepositories(): {
     },
 
     devWallets: {
-      findByTelegramUserId(telegramUserId: string): DevWallet | null {
+      async findByTelegramUserId(telegramUserId: string): Promise<DevWallet | null> {
         return devWallets.get(telegramUserId) ?? null;
       },
 
-      save(wallet: DevWallet): DevWallet {
+      async save(wallet: DevWallet): Promise<DevWallet> {
         devWallets.set(wallet.telegramUserId, wallet);
         return wallet;
       },

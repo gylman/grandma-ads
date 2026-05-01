@@ -62,7 +62,8 @@ export function createHttpRouter(useCases: AppUseCases, config: AppConfig): Rout
         return;
       }
 
-      res.status(201).json({ channel: await useCases.registerChannel({ ownerUserId, telegramChannelUsername }) });
+      const registration = await useCases.registerChannel({ ownerUserId, telegramChannelUsername });
+      res.status(registration.status === 'CREATED' ? 201 : 200).json(registration);
     } catch (error) {
       next(error);
     }
@@ -86,9 +87,13 @@ export function createHttpRouter(useCases: AppUseCases, config: AppConfig): Rout
     }
   });
 
-  router.post('/api/agent/intake', (req, res) => {
-    const message = typeof req.body.message === 'string' ? req.body.message : '';
-    res.json(useCases.extractCampaignIntake(message));
+  router.post('/api/agent/intake', async (req, res, next) => {
+    try {
+      const message = typeof req.body.message === 'string' ? req.body.message : '';
+      res.json(await useCases.extractCampaignIntake(message));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post('/api/campaigns', async (req, res, next) => {

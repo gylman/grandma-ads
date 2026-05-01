@@ -40,6 +40,9 @@ export function createCampaign(input: {
   id: string;
   advertiserUserId: string;
   advertiserWalletAddress: string;
+  posterUserId?: string | null;
+  posterWalletAddress?: string | null;
+  channelId?: string | null;
   tokenAddress: string;
   amount: string;
   durationSeconds: number;
@@ -56,9 +59,9 @@ export function createCampaign(input: {
     onchainCampaignId: null,
     advertiserUserId: input.advertiserUserId,
     advertiserWalletAddress: input.advertiserWalletAddress,
-    posterUserId: null,
-    posterWalletAddress: null,
-    channelId: null,
+    posterUserId: input.posterUserId ?? null,
+    posterWalletAddress: input.posterWalletAddress ?? null,
+    channelId: input.channelId ?? null,
     targetTelegramChannelUsername: input.targetTelegramChannelUsername ?? null,
     targetTelegramChannelId: null,
     tokenAddress: input.tokenAddress,

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Connection, Schema, createConnection } from 'mongoose';
-import { CreateDraftCampaignInput, SubmitPostInput } from '../../../application/ports/campaignRepository';
-import { RegisterChannelInput } from '../../../application/ports/channelRepository';
+import { CreateDraftCampaignInput, PatchCampaignInput, SubmitPostInput } from '../../../application/ports/campaignRepository';
+import { RegisterChannelInput, RegisterChannelOutcome } from '../../../application/ports/channelRepository';
 import { DevWallet } from '../../../application/ports/devWalletRepository';
 import { PersistenceAdapterPort } from '../../../application/ports/persistence';
 import { UpsertUserInput } from '../../../application/ports/userRepository';
@@ -12,6 +12,10 @@ import { verifyPostSnapshot } from '../../../domain/verification';
 
 type UserDocument = User & {
   walletAddressLower: string;
+};
+
+type ChannelDocument = Channel & {
+  telegramChannelUsernameLower: string;
 };
 
 type Models = ReturnType<typeof createModels>;
@@ -79,16 +83,36 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           const user = await models.User.findOne({ walletAddressLower: walletAddress.toLowerCase() }).lean<UserDocument | null>();
           return user ? toUser(user) : null;
         },
+
+        async findById(userId: string): Promise<User | null> {
+          const user = await models.User.findOne({ id: userId }).lean<UserDocument | null>();
+          return user ? toUser(user) : null;
+        },
       },
 
       channels: {
-        async register(input: RegisterChannelInput): Promise<Channel> {
+        async register(input: RegisterChannelInput): Promise<RegisterChannelOutcome> {
+          const normalizedUsername = normalizeChannelUsername(input.telegramChannelUsername);
+          const existingVerified = await models.Channel.findOne({
+            telegramChannelUsernameLower: normalizedUsername,
+            status: 'VERIFIED',
+          }).lean<ChannelDocument | null>();
+          if (existingVerified) return { channel: toChannel(existingVerified), status: 'ALREADY_VERIFIED' };
+
+          const existingPending = await models.Channel.findOne({
+            telegramChannelUsernameLower: normalizedUsername,
+            ownerUserId: input.ownerUserId,
+            status: 'PENDING',
+          }).lean<ChannelDocument | null>();
+          if (existingPending) return { channel: toChannel(existingPending), status: 'PENDING_EXISTS' };
+
           const now = new Date();
           const shortOwner = input.ownerUserId.replace(/\W/g, '').slice(-6).toUpperCase();
-          const channel: Channel = {
+          const channel: ChannelDocument = {
             id: id('chn'),
             telegramChannelId: input.telegramChannelUsername,
-            telegramChannelUsername: input.telegramChannelUsername.replace(/^@/, ''),
+            telegramChannelUsername: normalizedUsername,
+            telegramChannelUsernameLower: normalizedUsername,
             title: input.title ?? null,
             ownerUserId: input.ownerUserId,
             verificationCode: `AD_VERIFY_${Math.random().toString(36).slice(2, 8).toUpperCase()}_${shortOwner}`,
@@ -100,15 +124,15 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           };
 
           await models.Channel.create(channel);
-          return channel;
+          return { channel: toChannel(channel), status: 'CREATED' };
         },
 
         async updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Promise<Channel> {
-          const channel = await models.Channel.findOne({ id: channelId }).lean<Channel | null>();
+          const channel = await models.Channel.findOne({ id: channelId }).lean<ChannelDocument | null>();
           if (!channel) throw new Error('Channel not found');
 
           const updated: Channel = {
-            ...channel,
+            ...toChannel(channel),
             status,
             verificationPostUrl: verificationPostUrl ?? channel.verificationPostUrl,
             verifiedAt: status === 'VERIFIED' ? new Date() : channel.verifiedAt,
@@ -130,9 +154,17 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           return updated;
         },
 
+        async findVerifiedByUsername(telegramChannelUsername: string): Promise<Channel | null> {
+          const channel = await models.Channel.findOne({
+            telegramChannelUsernameLower: normalizeChannelUsername(telegramChannelUsername),
+            status: 'VERIFIED',
+          }).lean<ChannelDocument | null>();
+          return channel ? toChannel(channel) : null;
+        },
+
         async list(ownerUserId?: string): Promise<Channel[]> {
           const filter = ownerUserId ? { ownerUserId } : {};
-          const channels = await models.Channel.find(filter).sort({ createdAt: -1 }).lean<Channel[]>();
+          const channels = await models.Channel.find(filter).sort({ createdAt: -1 }).lean<ChannelDocument[]>();
           return channels.map(toChannel);
         },
       },
@@ -149,9 +181,31 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           return campaigns.map(toCampaign);
         },
 
+        async listByPosterWalletAndStatus(posterWalletAddress: string, status: CampaignStatus): Promise<Campaign[]> {
+          const campaigns = await models.Campaign.find({ posterWalletAddress, status }).sort({ updatedAt: -1 }).lean<Campaign[]>();
+          return campaigns.map(toCampaign);
+        },
+
+        async findBySubmittedPost(channelUsername: string, messageId: string, statuses: CampaignStatus[]): Promise<Campaign | null> {
+          const normalizedChannel = normalizeChannelUsername(channelUsername);
+          const candidates = await models.Campaign.find({ submittedMessageId: messageId, status: { $in: statuses } })
+            .sort({ updatedAt: -1 })
+            .lean<Campaign[]>();
+          const campaign =
+            candidates.find((candidate) => normalizeChannelUsername(candidate.targetTelegramChannelUsername ?? '') === normalizedChannel) ?? null;
+          return campaign ? toCampaign(campaign) : null;
+        },
+
         async findById(campaignId: string): Promise<Campaign | null> {
           const campaign = await models.Campaign.findOne({ id: campaignId }).lean<Campaign | null>();
           return campaign ? toCampaign(campaign) : null;
+        },
+
+        async patch(campaignId: string, patch: PatchCampaignInput): Promise<Campaign> {
+          const update = { ...patch, updatedAt: new Date() };
+          const campaign = await models.Campaign.findOneAndUpdate({ id: campaignId }, { $set: update }, { new: true }).lean<Campaign | null>();
+          if (!campaign) throw new Error('Campaign not found');
+          return toCampaign(campaign);
         },
 
         async advance(campaignId: string, nextStatus: CampaignStatus): Promise<Campaign> {
@@ -236,11 +290,12 @@ function createModels(connection: Connection) {
     { versionKey: false },
   );
 
-  const channelSchema = new Schema<Channel>(
+  const channelSchema = new Schema<ChannelDocument>(
     {
       id: { type: String, required: true, unique: true },
       telegramChannelId: { type: String, required: true },
       telegramChannelUsername: { type: String, default: null },
+      telegramChannelUsernameLower: { type: String, required: true, index: true },
       title: { type: String, default: null },
       ownerUserId: { type: String, required: true, index: true },
       verificationCode: { type: String, default: null },
@@ -331,7 +386,7 @@ function createModels(connection: Connection) {
 
   return {
     User: connection.model<UserDocument>('User', userSchema, 'users'),
-    Channel: connection.model<Channel>('Channel', channelSchema, 'channels'),
+    Channel: connection.model<ChannelDocument>('Channel', channelSchema, 'channels'),
     Campaign: connection.model<Campaign>('Campaign', campaignSchema, 'campaigns'),
     VerificationCheck: connection.model<VerificationCheck>('VerificationCheck', verificationCheckSchema, 'verificationChecks'),
     DevWallet: connection.model<DevWallet>('DevWallet', devWalletSchema, 'devWallets'),
@@ -349,7 +404,7 @@ function toUser(user: UserDocument): User {
   };
 }
 
-function toChannel(channel: Channel): Channel {
+function toChannel(channel: ChannelDocument): Channel {
   return {
     id: channel.id,
     telegramChannelId: channel.telegramChannelId,
@@ -363,6 +418,10 @@ function toChannel(channel: Channel): Channel {
     createdAt: channel.createdAt,
     updatedAt: channel.updatedAt,
   };
+}
+
+function normalizeChannelUsername(value: string): string {
+  return value.trim().replace(/^@/, '').toLowerCase();
 }
 
 function toCampaign(campaign: Campaign): Campaign {

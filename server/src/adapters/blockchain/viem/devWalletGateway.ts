@@ -115,9 +115,30 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
         });
       });
     },
+
+    createCampaignFromBalance(wallet, input) {
+      assertConfigured(config);
+      return withGasTopUp(wallet, async () => {
+        const account = privateKeyToAccount(wallet.privateKey);
+        const walletClient = createWalletClient({ account, chain, transport });
+        const simulation = await publicClient.simulateContract({
+          account,
+          address: config.escrowContractAddress as `0x${string}`,
+          abi: adEscrowAbi,
+          functionName: 'createCampaignFromBalance',
+          args: [input.posterWalletAddress, config.usdcTokenAddress as `0x${string}`, input.amount, input.durationSeconds],
+        });
+        const txHash = await walletClient.writeContract(simulation.request);
+
+        return {
+          onchainCampaignId: simulation.result,
+          txHash,
+        };
+      });
+    },
   };
 
-  async function withGasTopUp(wallet: DevWallet, action: () => Promise<`0x${string}`>): Promise<`0x${string}`> {
+  async function withGasTopUp<T>(wallet: DevWallet, action: () => Promise<T>): Promise<T> {
     await ensureGas(wallet.address);
     return action();
   }

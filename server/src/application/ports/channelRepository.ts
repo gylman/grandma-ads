@@ -6,8 +6,14 @@ export type RegisterChannelInput = {
   title?: string | null;
 };
 
+export type RegisterChannelOutcome = {
+  channel: Channel;
+  status: 'CREATED' | 'PENDING_EXISTS' | 'ALREADY_VERIFIED';
+};
+
 export interface ChannelRepository {
-  register(input: RegisterChannelInput): Promise<Channel>;
+  register(input: RegisterChannelInput): Promise<RegisterChannelOutcome>;
+  findVerifiedByUsername(telegramChannelUsername: string): Promise<Channel | null>;
   updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Promise<Channel>;
   list(ownerUserId?: string): Promise<Channel[]>;
 }

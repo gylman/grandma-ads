@@ -1,5 +1,6 @@
 import express, { Express } from 'express';
 import { createHttpRouter } from './adapters/http/routes';
+import { createAgentGateway } from './adapters/agent/createAgentGateway';
 import { createViemDevWalletGateway } from './adapters/blockchain/viem/devWalletGateway';
 import { createViemBlockchainGateway } from './adapters/blockchain/viem/viemBlockchainGateway';
 import { createPersistenceAdapter } from './adapters/persistence/createPersistenceAdapter';
@@ -13,9 +14,10 @@ export async function createApp(): Promise<Express> {
 
 export async function createRuntime() {
   const persistence = await createPersistenceAdapter(config);
+  const agent = createAgentGateway(config);
   const blockchain = createViemBlockchainGateway(config);
   const devWalletGateway = createViemDevWalletGateway(config);
-  const useCases = createAppUseCases({ ...persistence.repositories, blockchain, devWalletGateway });
+  const useCases = createAppUseCases({ ...persistence.repositories, agent, blockchain, devWalletGateway });
 
   const app = express();
   app.use((req, res, next) => {

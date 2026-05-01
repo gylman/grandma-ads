@@ -389,7 +389,6 @@ type AgentAction =
   | { type: "REQUEST_POST_REVISION"; reason: string }
   | { type: "START_COUNTDOWN" }
   | { type: "MARK_READY_FOR_SETTLEMENT" }
-  | { type: "OPEN_DISPUTE"; reason: string };
 ```
 
 Then your backend validates:

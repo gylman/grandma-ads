@@ -17,6 +17,8 @@ export type AppConfig = {
   custodialDevMode: boolean;
   devWalletMinterPrivateKey: string;
   devWalletEthTopUpAmount: bigint;
+  openaiApiKey: string;
+  openaiModel: string;
 };
 
 export const config: AppConfig = {
@@ -36,6 +38,8 @@ export const config: AppConfig = {
   custodialDevMode: process.env.CUSTODIAL_DEV_MODE === 'true',
   devWalletMinterPrivateKey: process.env.DEV_WALLET_MINTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? '',
   devWalletEthTopUpAmount: parseEthAmount(process.env.DEV_WALLET_ETH_TOP_UP_AMOUNT ?? '0.05'),
+  openaiApiKey: process.env.OPENAI_API_KEY ?? '',
+  openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
 };
 
 function parseTelegramBotMode(mode: string | undefined, token: string | undefined): AppConfig['telegramBotMode'] {

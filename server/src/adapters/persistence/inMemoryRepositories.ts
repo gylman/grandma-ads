@@ -1,10 +1,10 @@
 import { createCampaign, transitionCampaign } from '../../domain/campaign';
 import { verifyPostSnapshot } from '../../domain/verification';
-import { CampaignRepository, CreateDraftCampaignInput, SubmitPostInput } from '../../application/ports/campaignRepository';
-import { ChannelRepository, RegisterChannelInput } from '../../application/ports/channelRepository';
+import { CampaignRepository, CreateDraftCampaignInput, PatchCampaignInput, SubmitPostInput } from '../../application/ports/campaignRepository';
+import { ChannelRepository, RegisterChannelInput, RegisterChannelOutcome } from '../../application/ports/channelRepository';
 import { DevWallet, DevWalletRepository } from '../../application/ports/devWalletRepository';
 import { UpsertUserInput, UserRepository } from '../../application/ports/userRepository';
-import { Campaign, Channel, ChannelStatus, User, VerificationCheck } from '../../domain/types';
+import { Campaign, CampaignStatus, Channel, ChannelStatus, User, VerificationCheck } from '../../domain/types';
 
 let nextId = 1;
 
@@ -57,16 +57,34 @@ export function createInMemoryRepositories(): {
       async findByWallet(walletAddress: string): Promise<User | null> {
         return [...users.values()].find((user) => user.walletAddress.toLowerCase() === walletAddress.toLowerCase()) ?? null;
       },
+
+      async findById(userId: string): Promise<User | null> {
+        return users.get(userId) ?? null;
+      },
     },
 
     channels: {
-      async register(input: RegisterChannelInput): Promise<Channel> {
+      async register(input: RegisterChannelInput): Promise<RegisterChannelOutcome> {
+        const normalizedUsername = normalizeChannelUsername(input.telegramChannelUsername);
+        const existingVerified = [...channels.values()].find(
+          (channel) => normalizeChannelUsername(channel.telegramChannelUsername ?? channel.telegramChannelId) === normalizedUsername && channel.status === 'VERIFIED',
+        );
+        if (existingVerified) return { channel: existingVerified, status: 'ALREADY_VERIFIED' };
+
+        const existingPending = [...channels.values()].find(
+          (channel) =>
+            normalizeChannelUsername(channel.telegramChannelUsername ?? channel.telegramChannelId) === normalizedUsername &&
+            channel.ownerUserId === input.ownerUserId &&
+            channel.status === 'PENDING',
+        );
+        if (existingPending) return { channel: existingPending, status: 'PENDING_EXISTS' };
+
         const now = new Date();
         const shortOwner = input.ownerUserId.replace(/\W/g, '').slice(-6).toUpperCase();
         const channel: Channel = {
           id: id('chn'),
           telegramChannelId: input.telegramChannelUsername,
-          telegramChannelUsername: input.telegramChannelUsername.replace(/^@/, ''),
+          telegramChannelUsername: normalizedUsername,
           title: input.title ?? null,
           ownerUserId: input.ownerUserId,
           verificationCode: `AD_VERIFY_${Math.random().toString(36).slice(2, 8).toUpperCase()}_${shortOwner}`,
@@ -77,7 +95,7 @@ export function createInMemoryRepositories(): {
           updatedAt: now,
         };
         channels.set(channel.id, channel);
-        return channel;
+        return { channel, status: 'CREATED' };
       },
 
       async updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Promise<Channel> {
@@ -93,6 +111,15 @@ export function createInMemoryRepositories(): {
         };
         channels.set(channelId, updated);
         return updated;
+      },
+
+      async findVerifiedByUsername(telegramChannelUsername: string): Promise<Channel | null> {
+        const normalizedUsername = normalizeChannelUsername(telegramChannelUsername);
+        return (
+          [...channels.values()].find(
+            (channel) => normalizeChannelUsername(channel.telegramChannelUsername ?? channel.telegramChannelId) === normalizedUsername && channel.status === 'VERIFIED',
+          ) ?? null
+        );
       },
 
       async list(ownerUserId?: string): Promise<Channel[]> {
@@ -112,8 +139,35 @@ export function createInMemoryRepositories(): {
         return [...campaigns.values()];
       },
 
+      async listByPosterWalletAndStatus(posterWalletAddress: string, status: CampaignStatus): Promise<Campaign[]> {
+        return [...campaigns.values()].filter(
+          (campaign) => campaign.posterWalletAddress?.toLowerCase() === posterWalletAddress.toLowerCase() && campaign.status === status,
+        );
+      },
+
+      async findBySubmittedPost(channelUsername: string, messageId: string, statuses: CampaignStatus[]): Promise<Campaign | null> {
+        const normalizedChannel = normalizeChannelUsername(channelUsername);
+        return (
+          [...campaigns.values()].find(
+            (campaign) =>
+              statuses.includes(campaign.status) &&
+              campaign.submittedMessageId === messageId &&
+              normalizeChannelUsername(campaign.targetTelegramChannelUsername ?? '') === normalizedChannel,
+          ) ?? null
+        );
+      },
+
       async findById(campaignId: string): Promise<Campaign | null> {
         return campaigns.get(campaignId) ?? null;
+      },
+
+      async patch(campaignId: string, patch: PatchCampaignInput): Promise<Campaign> {
+        const campaign = campaigns.get(campaignId);
+        if (!campaign) throw new Error('Campaign not found');
+
+        const updated: Campaign = { ...campaign, ...patch, updatedAt: new Date() };
+        campaigns.set(campaignId, updated);
+        return updated;
       },
 
       async advance(campaignId, nextStatus): Promise<Campaign> {
@@ -174,4 +228,8 @@ export function createInMemoryRepositories(): {
       },
     },
   };
+}
+
+function normalizeChannelUsername(value: string): string {
+  return value.trim().replace(/^@/, '').toLowerCase();
 }

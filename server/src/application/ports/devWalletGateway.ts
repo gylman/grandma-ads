@@ -6,6 +6,11 @@ export type DevWalletBalance = {
   escrowBalance: bigint;
 };
 
+export type DevFundCampaignResult = {
+  onchainCampaignId: bigint;
+  txHash: `0x${string}`;
+};
+
 export interface DevWalletGateway {
   generateWallet(telegramUserId: string): DevWallet;
   getBalance(wallet: DevWallet): Promise<DevWalletBalance>;
@@ -13,4 +18,8 @@ export interface DevWalletGateway {
   approveEscrow(wallet: DevWallet, amount: bigint): Promise<`0x${string}`>;
   deposit(wallet: DevWallet, amount: bigint): Promise<`0x${string}`>;
   withdraw(wallet: DevWallet, amount: bigint): Promise<`0x${string}`>;
+  createCampaignFromBalance(
+    wallet: DevWallet,
+    input: { posterWalletAddress: `0x${string}`; amount: bigint; durationSeconds: bigint },
+  ): Promise<DevFundCampaignResult>;
 }

@@ -14,6 +14,7 @@ Implemented:
 - Server API with hexagonal architecture.
 - Repository ports with pluggable persistence adapters (`inmemory` and MongoDB through Mongoose).
 - viem blockchain gateway on the server.
+- OpenAI-backed agent gateway with deterministic fallback.
 - React client dashboard with wagmi wallet interactions.
 - Basic channel registration, campaign draft creation, content safety checks, and post verification primitives.
 
@@ -24,7 +25,7 @@ Not implemented yet:
 - Scheduled random/final checks.
 - Production wallet signature auth.
 - Full offer/accept/reject/counter flow.
-- OpenAI-backed agent integration.
+- Full automated campaign monitoring and settlement jobs.
 
 ## Repo Layout
 
@@ -477,6 +478,7 @@ TELEGRAM_BOT_MODE=polling
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
 OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 Client:
@@ -512,6 +514,51 @@ POST /api/campaigns/:id/transition
 POST /api/campaigns/:id/offer-preview
 POST /api/campaigns/:id/submit-post
 ```
+
+## Bot Campaign Flow
+
+In dev custodial mode, the bot can now run the first agentic campaign loop:
+
+```txt
+/new_campaign
+/campaign_draft Promote Grandma Ads on @openagents2026 for 100 USDC for 24 hours. Caption: Sponsored posts with escrow.
+/revise_copy <campaignId> make it shorter and more direct
+/fund_campaign <campaignId>
+/send_offer <campaignId>
+```
+
+The poster then uses:
+
+```txt
+/accept <campaignId>
+/reject <campaignId>
+/counter <campaignId> 150 USDC for 24h
+```
+
+When the poster accepts, the bot posts the approved ad text into the verified channel automatically. The bot must be an admin in that channel with permission to post messages.
+
+The bot also listens for channel post updates:
+
+```txt
+channel_post
+edited_channel_post
+```
+
+Most channel events are ignored. The server only acts when the channel username and message id match a campaign post that it already knows about. If an active campaign post is edited and no longer matches the approved copy, the server refunds the campaign on-chain when possible and marks it failed/refunded.
+
+If a poster counters, the advertiser can use:
+
+```txt
+/accept_counter <campaignId> <amount> <duration>
+```
+
+Example:
+
+```txt
+/accept_counter cmp_1 150 24h
+```
+
+`OPENAI_API_KEY` enables OpenAI-backed campaign intake, safety notes, ad copy suggestions, offer wording, and counteroffer summaries. Without it, the server falls back to deterministic local helpers.
 
 ## Architecture Notes
 

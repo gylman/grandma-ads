@@ -2,7 +2,7 @@ import { DynamicEvmWalletClient } from '@dynamic-labs-wallet/node-evm';
 import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseUnits } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { foundry, sepolia } from 'viem/chains';
-import { DevWalletGateway } from '../../../application/ports/devWalletGateway';
+import { CreateCampaignAuthorization, DevWalletGateway, TokenPermitAuthorization } from '../../../application/ports/devWalletGateway';
 import { DevWallet } from '../../../application/ports/devWalletRepository';
 import { AppConfig } from '../../../config';
 import { adEscrowAbi } from './adEscrowAbi';
@@ -26,6 +26,27 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
   const transport = http(config.rpcUrl || undefined);
   const publicClient = createPublicClient({ chain, transport });
   const rawSender = createWalletClient({ chain, transport });
+
+  async function finalizePreparedTransaction<T extends Record<string, unknown>>(transaction: T): Promise<T & { gasPrice: bigint; type: 'legacy' }> {
+    const gasPrice = await publicClient.getGasPrice();
+    return {
+      ...transaction,
+      gasPrice,
+      type: 'legacy',
+    };
+  }
+
+  async function writeLocalContract(
+    account: ReturnType<typeof privateKeyToAccount>,
+    request: Parameters<typeof publicClient.simulateContract>[0],
+  ): Promise<`0x${string}`> {
+    const walletClient = createWalletClient({ account, chain, transport });
+    const simulation = await publicClient.simulateContract({
+      account,
+      ...request,
+    });
+    return walletClient.writeContract(await finalizePreparedTransaction(simulation.request));
+  }
 
   return {
     async createWallet(telegramUserId: string): Promise<DevWallet> {
@@ -72,6 +93,34 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       }
 
       return await localAccount(wallet).signMessage({ message });
+    },
+
+    async signTokenPermitAuthorization(wallet, input): Promise<`0x${string}`> {
+      const typedData = createTokenPermitTypedData(input.tokenAddress, input.chainId, input.authorization);
+
+      if (wallet.provider === 'dynamic') {
+        const authenticatedClient = await authenticatedDynamicClient(config);
+        return (await authenticatedClient.signTypedData({
+          accountAddress: wallet.address,
+          typedData: typedData as never,
+        })) as `0x${string}`;
+      }
+
+      return await localAccount(wallet).signTypedData(typedData);
+    },
+
+    async signCreateCampaignAuthorization(wallet, input): Promise<`0x${string}`> {
+      const typedData = createCampaignAuthorizationTypedData(input.verifyingContract, input.chainId, input.authorization);
+
+      if (wallet.provider === 'dynamic') {
+        const authenticatedClient = await authenticatedDynamicClient(config);
+        return (await authenticatedClient.signTypedData({
+          accountAddress: wallet.address,
+          typedData: typedData as never,
+        })) as `0x${string}`;
+      }
+
+      return await localAccount(wallet).signTypedData(typedData);
     },
 
     async getBalance(wallet: DevWallet) {
@@ -148,7 +197,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       }
 
       const account = privateKeyToAccount(config.devWalletMinterPrivateKey as `0x${string}`);
-      return createWalletClient({ account, chain, transport }).writeContract({
+      return writeLocalContract(account, {
         address: config.usdcTokenAddress as `0x${string}`,
         abi: mockUsdcAbi,
         functionName: 'mint',
@@ -168,7 +217,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       }
 
       const account = localAccount(wallet);
-      return createWalletClient({ account, chain, transport }).writeContract({
+      return writeLocalContract(account, {
         address: config.usdcTokenAddress as `0x${string}`,
         abi: erc20Abi,
         functionName: 'approve',
@@ -188,7 +237,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       }
 
       const account = localAccount(wallet);
-      return createWalletClient({ account, chain, transport }).writeContract({
+      return writeLocalContract(account, {
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'deposit',
@@ -208,7 +257,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       }
 
       const account = localAccount(wallet);
-      return createWalletClient({ account, chain, transport }).writeContract({
+      return writeLocalContract(account, {
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'withdraw',
@@ -243,7 +292,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
         account,
         ...request,
       });
-      const txHash = await walletClient.writeContract(simulation.request);
+      const txHash = await walletClient.writeContract(await finalizePreparedTransaction(simulation.request));
 
       return {
         onchainCampaignId: simulation.result,
@@ -257,7 +306,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       account: wallet.address,
       ...request,
     });
-    return signAndSendPreparedTransaction(wallet, simulation.request);
+    return signAndSendPreparedTransaction(wallet, await finalizePreparedTransaction(simulation.request));
   }
 
   async function signAndSendPreparedTransaction(wallet: DevWallet, transaction: unknown): Promise<`0x${string}`> {
@@ -282,6 +331,60 @@ export function formatDevUsdcAmount(value: bigint): string {
 
 export function formatDevTokenAmount(value: bigint, decimals: number): string {
   return formatUnits(value, decimals);
+}
+
+function createCampaignAuthorizationTypedData(
+  verifyingContract: `0x${string}`,
+  chainId: number,
+  authorization: CreateCampaignAuthorization,
+) {
+  return {
+    domain: {
+      name: 'AdEscrow',
+      version: '1',
+      chainId,
+      verifyingContract,
+    },
+    primaryType: 'CreateCampaignAuthorization' as const,
+    types: {
+      CreateCampaignAuthorization: [
+        { name: 'advertiser', type: 'address' },
+        { name: 'poster', type: 'address' },
+        { name: 'token', type: 'address' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'durationSeconds', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    message: authorization,
+  };
+}
+
+function createTokenPermitTypedData(
+  tokenAddress: `0x${string}`,
+  chainId: number,
+  authorization: TokenPermitAuthorization,
+) {
+  return {
+    domain: {
+      name: 'Mock USDC',
+      version: '1',
+      chainId,
+      verifyingContract: tokenAddress,
+    },
+    primaryType: 'Permit' as const,
+    types: {
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    message: authorization,
+  };
 }
 
 async function authenticatedDynamicClient(config: AppConfig) {

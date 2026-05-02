@@ -23,6 +23,8 @@ export async function createRuntime() {
     blockchain,
     devWalletGateway,
     tokenDecimalsByAddress: createTokenDecimalsByAddress(),
+    escrowContractAddress: config.escrowContractAddress as `0x${string}`,
+    chainId: config.chainId,
   });
 
   const app = express();

@@ -15,9 +15,32 @@ export type CreateOnchainCampaignInput = {
   durationSeconds: bigint;
 };
 
+export type CreateOnchainCampaignBySigInput = CreateOnchainCampaignInput & {
+  nonce: bigint;
+  deadline: bigint;
+  signature: `0x${string}`;
+};
+
+export type RelayedCampaignResult = {
+  onchainCampaignId: bigint;
+  txHash: `0x${string}`;
+};
+
+export type DepositWithPermitInput = {
+  ownerWalletAddress: `0x${string}`;
+  tokenAddress: `0x${string}`;
+  amount: bigint;
+  deadline: bigint;
+  signature: `0x${string}`;
+};
+
 export interface BlockchainGateway {
   getBalance(walletAddress: string, tokenAddress?: string): Promise<BalanceSnapshot>;
+  getCampaignNonce(walletAddress: `0x${string}`): Promise<bigint>;
+  getTokenPermitNonce(tokenAddress: `0x${string}`, walletAddress: `0x${string}`): Promise<bigint>;
+  depositWithPermit(input: DepositWithPermitInput): Promise<`0x${string}`>;
   createCampaignFromBalance(input: CreateOnchainCampaignInput): Promise<`0x${string}`>;
+  createCampaignFromBalanceBySig(input: CreateOnchainCampaignBySigInput): Promise<RelayedCampaignResult>;
   startCampaign(campaignId: bigint): Promise<`0x${string}`>;
   completeCampaign(campaignId: bigint): Promise<`0x${string}`>;
   refundCampaign(campaignId: bigint): Promise<`0x${string}`>;

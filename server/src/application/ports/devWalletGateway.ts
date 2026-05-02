@@ -20,9 +20,43 @@ export type DevFundCampaignResult = {
   txHash: `0x${string}`;
 };
 
+export type CreateCampaignAuthorization = {
+  advertiser: `0x${string}`;
+  poster: `0x${string}`;
+  token: `0x${string}`;
+  amount: bigint;
+  durationSeconds: bigint;
+  nonce: bigint;
+  deadline: bigint;
+};
+
+export type TokenPermitAuthorization = {
+  owner: `0x${string}`;
+  spender: `0x${string}`;
+  value: bigint;
+  nonce: bigint;
+  deadline: bigint;
+};
+
 export interface DevWalletGateway {
   createWallet(telegramUserId: string): Promise<DevWallet>;
   signMessage(wallet: DevWallet, message: string): Promise<`0x${string}`>;
+  signTokenPermitAuthorization(
+    wallet: DevWallet,
+    input: {
+      tokenAddress: `0x${string}`;
+      chainId: number;
+      authorization: TokenPermitAuthorization;
+    },
+  ): Promise<`0x${string}`>;
+  signCreateCampaignAuthorization(
+    wallet: DevWallet,
+    input: {
+      verifyingContract: `0x${string}`;
+      chainId: number;
+      authorization: CreateCampaignAuthorization;
+    },
+  ): Promise<`0x${string}`>;
   getBalance(wallet: DevWallet): Promise<DevWalletBalance>;
   getMajorBalances(wallet: DevWallet): Promise<DevTokenBalance[]>;
   mintMockUsdc(to: `0x${string}`, amount: bigint): Promise<`0x${string}`>;

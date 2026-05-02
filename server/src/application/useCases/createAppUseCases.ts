@@ -20,6 +20,8 @@ export function createAppUseCases(dependencies: {
   devWallets: DevWalletRepository;
   devWalletGateway: DevWalletGateway;
   tokenDecimalsByAddress?: Record<string, number>;
+  escrowContractAddress: `0x${string}`;
+  chainId: number;
 }) {
   const { users, channels, campaigns, agent, blockchain, devWallets, devWalletGateway } = dependencies;
   const tokenDecimalsByAddress = dependencies.tokenDecimalsByAddress ?? {};
@@ -71,25 +73,52 @@ export function createAppUseCases(dependencies: {
       );
     }
 
-    const nativeBalance = balances.find((balance) => balance.isNative);
-    if (!nativeBalance || nativeBalance.walletBalance === 0n) {
-      throw new Error('This wallet has no native ETH for transaction gas. Add a small amount of ETH, then try again.');
-    }
+    const authorizationMessage = formatCreateCampaignAuthorizationMessage(campaign, tokenBalance.symbol);
 
     let result;
+    let signature: `0x${string}`;
+    let nonce: bigint;
+    let deadline: bigint;
     try {
-      result = await devWalletGateway.createCampaignFromBalance(wallet, {
+      nonce = await blockchain.getCampaignNonce(wallet.address);
+      deadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60);
+      const authorization = {
+        advertiser: wallet.address,
+        poster: campaign.posterWalletAddress as `0x${string}`,
+        token: campaign.tokenAddress as `0x${string}`,
+        amount,
+        durationSeconds: BigInt(campaign.durationSeconds),
+        nonce,
+        deadline,
+      };
+      signature = await devWalletGateway.signCreateCampaignAuthorization(wallet, {
+        verifyingContract: dependencies.escrowContractAddress,
+        chainId: dependencies.chainId,
+        authorization,
+      });
+
+      result = await blockchain.createCampaignFromBalanceBySig({
+        advertiserWalletAddress: wallet.address,
         posterWalletAddress: campaign.posterWalletAddress as `0x${string}`,
         tokenAddress: campaign.tokenAddress as `0x${string}`,
         amount,
-        durationSeconds: BigInt(campaign.durationSeconds),
+        durationSeconds: authorization.durationSeconds,
+        nonce,
+        deadline,
+        signature,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
+      if (message.includes('function "nonces" reverted') || message.includes('function "createCampaignFromBalanceBySig"')) {
+        throw new Error('The deployed escrow contract is still the old version. Redeploy the contract, update ESCROW_CONTRACT_ADDRESS, and try again.');
+      }
       if (message.includes('InsufficientBalance') || message.includes('0xf4d678b8')) {
         throw new Error(`You do not have enough available ${tokenBalance.symbol} in escrow for this campaign.`);
       }
-      throw new Error('I could not lock funds on-chain for this campaign. Please check your balances and try again.');
+      if (message.includes('InvalidSignature') || message.includes('SignatureExpired')) {
+        throw new Error('I could not authorize that gasless campaign lock. Please try again.');
+      }
+      throw new Error('I could not relay the campaign funding on-chain. Please try again.');
     }
 
     let updated = campaign;
@@ -100,7 +129,15 @@ export function createAppUseCases(dependencies: {
       onchainCampaignId: result.onchainCampaignId.toString(),
     });
 
-    return { campaign: updated, txHash: result.txHash, onchainCampaignId: result.onchainCampaignId };
+    return {
+      campaign: updated,
+      txHash: result.txHash,
+      onchainCampaignId: result.onchainCampaignId,
+      authorizationMessage,
+      authorizationSignature: signature!,
+      authorizationDeadline: deadline!,
+      authorizationNonce: nonce!,
+    };
   }
 
   return {
@@ -266,6 +303,8 @@ export function createAppUseCases(dependencies: {
         | {
             txHash: `0x${string}`;
             onchainCampaignId: bigint;
+            authorizationMessage: string;
+            authorizationSignature: `0x${string}`;
           }
         | null = null;
 
@@ -275,6 +314,8 @@ export function createAppUseCases(dependencies: {
         funding = {
           txHash: funded.txHash,
           onchainCampaignId: funded.onchainCampaignId,
+          authorizationMessage: funded.authorizationMessage,
+          authorizationSignature: funded.authorizationSignature,
         };
       }
 
@@ -458,17 +499,94 @@ export function createAppUseCases(dependencies: {
       const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
 
-      const approvalTxHash = await devWalletGateway.approveEscrow(wallet, amount);
-      const depositTxHash = await devWalletGateway.deposit(wallet, amount);
-      return { wallet, approvalTxHash, depositTxHash };
+      const balances = await devWalletGateway.getMajorBalances(wallet);
+      const usdcBalance = balances.find((balance) => balance.symbol === 'USDC');
+      if (!usdcBalance) {
+        throw new Error('USDC is not configured on the server yet.');
+      }
+      if (usdcBalance.walletBalance < amount) {
+        throw new Error(
+          `You do not have enough USDC in the wallet. Needed ${formatTokenAmount(amount, usdcBalance.decimals)}, wallet has ${formatTokenAmount(
+            usdcBalance.walletBalance,
+            usdcBalance.decimals,
+          )}.`,
+        );
+      }
+
+      try {
+        const nonce = await blockchain.getTokenPermitNonce(usdcBalance.address!, wallet.address);
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60);
+        const signature = await devWalletGateway.signTokenPermitAuthorization(wallet, {
+          tokenAddress: usdcBalance.address!,
+          chainId: dependencies.chainId,
+          authorization: {
+            owner: wallet.address,
+            spender: dependencies.escrowContractAddress,
+            value: amount,
+            nonce,
+            deadline,
+          },
+        });
+        const txHash = await blockchain.depositWithPermit({
+          ownerWalletAddress: wallet.address,
+          tokenAddress: usdcBalance.address!,
+          amount,
+          deadline,
+          signature,
+        });
+        return { wallet, txHash, signature, deadline };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message.includes('function "depositWithPermit"') || message.includes('function "nonces" reverted')) {
+          throw new Error('The deployed local contracts are still the old version. Redeploy the token and escrow contracts, update the addresses, and try again.');
+        }
+        if (message.includes('InvalidSignature') || message.includes('SignatureExpired')) {
+          throw new Error('I could not authorize that gasless deposit. Please try /dev_deposit again.');
+        }
+        if (message.includes('InsufficientAllowance') || message.includes('SafeERC20CallFailed')) {
+          throw new Error('The token permit was not accepted by the current token contract. Redeploy the latest local contracts and try again.');
+        }
+        throw new Error('I could not relay that USDC deposit to escrow. Please try again.');
+      }
     },
 
     async withdrawDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
       const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
 
-      const txHash = await devWalletGateway.withdraw(wallet, amount);
-      return { wallet, txHash };
+      const balances = await devWalletGateway.getMajorBalances(wallet);
+      const nativeBalance = balances.find((balance) => balance.isNative)?.walletBalance ?? 0n;
+      const usdcBalance = balances.find((balance) => balance.symbol === 'USDC');
+      const availableInEscrow = usdcBalance?.escrowBalance ?? 0n;
+
+      if (!usdcBalance) {
+        throw new Error('USDC is not configured on the server yet.');
+      }
+      if (availableInEscrow < amount) {
+        throw new Error(
+          `You do not have enough available USDC in escrow. Needed ${formatTokenAmount(amount, usdcBalance.decimals)}, available ${formatTokenAmount(
+            availableInEscrow,
+            usdcBalance.decimals,
+          )}.`,
+        );
+      }
+      if (nativeBalance === 0n) {
+        throw new Error('This wallet has no ETH for gas yet. Send a small amount of ETH to it, then try /dev_withdraw again.');
+      }
+
+      try {
+        const txHash = await devWalletGateway.withdraw(wallet, amount);
+        return { wallet, txHash };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '';
+        if (message.includes('insufficient funds')) {
+          throw new Error('This wallet does not have enough ETH to cover gas for the withdrawal.');
+        }
+        if (message.includes('Cannot infer a transaction type')) {
+          throw new Error('I could not prepare the withdrawal transaction. Restart the server and try /dev_withdraw again.');
+        }
+        throw new Error('I could not withdraw that USDC from escrow. Please try again.');
+      }
     },
   };
 }
@@ -490,4 +608,24 @@ function formatTokenAmount(value: bigint, decimals: number): string {
 
 function pendingAdvertiserUserId(telegramUserId: string): string {
   return `telegram:${telegramUserId}`;
+}
+
+function formatCreateCampaignAuthorizationMessage(
+  campaign: { id: string; amount: string; targetTelegramChannelUsername: string | null; durationSeconds: number },
+  tokenSymbol: string,
+): string {
+  return [
+    'Authorize Grandma Ads to lock funds for this campaign.',
+    `Campaign: ${campaign.id}`,
+    `Target channel: ${campaign.targetTelegramChannelUsername ?? 'not set'}`,
+    `Amount: ${campaign.amount} ${tokenSymbol}`,
+    `Duration: ${formatDuration(campaign.durationSeconds)}`,
+    'The poster is paid only if the approved ad is published and verification passes.',
+  ].join('\n');
+}
+
+function formatDuration(durationSeconds: number): string {
+  if (durationSeconds % 86_400 === 0) return `${durationSeconds / 86_400}d`;
+  if (durationSeconds % 3_600 === 0) return `${durationSeconds / 3_600}h`;
+  return `${durationSeconds}s`;
 }

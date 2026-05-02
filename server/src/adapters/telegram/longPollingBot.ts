@@ -634,7 +634,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
           '/balance - Check your ad balance in the web app',
           '',
           config.custodialDevMode
-            ? 'Dev wallet commands: /dev_create_wallet, /dev_balance, /dev_mint 1000, /dev_deposit 100, /dev_withdraw 25, /sign hello'
+            ? 'Dev wallet commands: /dev_create_wallet, /dev_balance, /dev_mint 1000, /dev_deposit 100, /dev_withdraw 25, /dev_clear, /sign hello'
             : 'Dev wallet mode is off.',
         ].join('\n'),
       );
@@ -869,6 +869,25 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         const amount = parseCommandAmount(text);
         const result = await useCases.withdrawDevWalletMockUsdc(telegramUserId, amount);
         await sendMessage(chatId, `Withdrew ${formatDevUsdcAmount(amount)} mock USDC from escrow.\nTx: ${result.txHash}`);
+      });
+      return;
+    }
+
+    if (text.startsWith('/dev_clear')) {
+      await runDevCommand(chatId, async () => {
+        await useCases.clearDevState(telegramUserId);
+        balanceWatchers.delete(chatId);
+        pendingCampaignDraft.delete(chatId);
+        pendingChannelRegistration.delete(chatId);
+        pendingChannelVerification.delete(chatId);
+
+        for (const [key] of campaignByMessage) {
+          if (key.startsWith(`${chatId}:`)) {
+            campaignByMessage.delete(key);
+          }
+        }
+
+        await sendMessage(chatId, 'Cleared your dev wallet record, campaigns, channels, and linked user state for this Telegram account.');
       });
       return;
     }

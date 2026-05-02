@@ -61,6 +61,18 @@ export function createInMemoryRepositories(): {
       async findById(userId: string): Promise<User | null> {
         return users.get(userId) ?? null;
       },
+
+      async findByTelegramUserId(telegramUserId: string): Promise<User | null> {
+        return [...users.values()].find((user) => user.telegramUserId === telegramUserId) ?? null;
+      },
+
+      async deleteByTelegramUserId(telegramUserId: string): Promise<void> {
+        for (const [id, user] of users) {
+          if (user.telegramUserId === telegramUserId) {
+            users.delete(id);
+          }
+        }
+      },
     },
 
     channels: {
@@ -125,6 +137,14 @@ export function createInMemoryRepositories(): {
       async list(ownerUserId?: string): Promise<Channel[]> {
         const list = [...channels.values()];
         return ownerUserId ? list.filter((channel) => channel.ownerUserId === ownerUserId) : list;
+      },
+
+      async deleteByOwnerUserId(ownerUserId: string): Promise<void> {
+        for (const [id, channel] of channels) {
+          if (channel.ownerUserId === ownerUserId) {
+            channels.delete(id);
+          }
+        }
       },
     },
 
@@ -215,6 +235,22 @@ export function createInMemoryRepositories(): {
 
         return { check, result };
       },
+
+      async deleteByParticipant(input): Promise<void> {
+        for (const [id, campaign] of campaigns) {
+          const matches =
+            (input.advertiserUserId && campaign.advertiserUserId === input.advertiserUserId) ||
+            (input.advertiserWalletAddress &&
+              campaign.advertiserWalletAddress.toLowerCase() === input.advertiserWalletAddress.toLowerCase()) ||
+            (input.posterUserId && campaign.posterUserId === input.posterUserId) ||
+            (input.posterWalletAddress &&
+              campaign.posterWalletAddress?.toLowerCase() === input.posterWalletAddress.toLowerCase());
+
+          if (matches) {
+            campaigns.delete(id);
+          }
+        }
+      },
     },
 
     devWallets: {
@@ -225,6 +261,10 @@ export function createInMemoryRepositories(): {
       async save(wallet: DevWallet): Promise<DevWallet> {
         devWallets.set(wallet.telegramUserId, wallet);
         return wallet;
+      },
+
+      async deleteByTelegramUserId(telegramUserId: string): Promise<void> {
+        devWallets.delete(telegramUserId);
       },
     },
   };

@@ -43,4 +43,10 @@ export interface CampaignRepository {
   patch(campaignId: string, patch: PatchCampaignInput): Promise<Campaign>;
   advance(campaignId: string, nextStatus: CampaignStatus): Promise<Campaign>;
   submitPostForVerification(input: SubmitPostInput): Promise<SubmitPostOutput>;
+  deleteByParticipant(input: {
+    advertiserUserId?: string;
+    advertiserWalletAddress?: string;
+    posterUserId?: string;
+    posterWalletAddress?: string;
+  }): Promise<void>;
 }

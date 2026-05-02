@@ -54,12 +54,43 @@ export function createAppUseCases(dependencies: {
       throw new Error('Campaign poster wallet is missing.');
     }
 
-    const result = await devWalletGateway.createCampaignFromBalance(wallet, {
-      posterWalletAddress: campaign.posterWalletAddress as `0x${string}`,
-      tokenAddress: campaign.tokenAddress as `0x${string}`,
-      amount: parseTokenAmount(campaign.amount, tokenDecimalsByAddress[campaign.tokenAddress.toLowerCase()] ?? 6),
-      durationSeconds: BigInt(campaign.durationSeconds),
-    });
+    const balances = await devWalletGateway.getMajorBalances(wallet);
+    const tokenBalance = balances.find((balance) => balance.address?.toLowerCase() === campaign.tokenAddress.toLowerCase());
+    if (!tokenBalance) {
+      throw new Error('That campaign token is not configured on the server yet.');
+    }
+
+    const amount = parseTokenAmount(campaign.amount, tokenDecimalsByAddress[campaign.tokenAddress.toLowerCase()] ?? 6);
+    const availableInEscrow = tokenBalance.escrowBalance ?? 0n;
+    if (availableInEscrow < amount) {
+      throw new Error(
+        `You do not have enough available ${tokenBalance.symbol} in escrow for this campaign. Needed ${campaign.amount}, available ${formatTokenAmount(
+          availableInEscrow,
+          tokenBalance.decimals,
+        )}. Deposit first, then try again.`,
+      );
+    }
+
+    const nativeBalance = balances.find((balance) => balance.isNative);
+    if (!nativeBalance || nativeBalance.walletBalance === 0n) {
+      throw new Error('This wallet has no native ETH for transaction gas. Add a small amount of ETH, then try again.');
+    }
+
+    let result;
+    try {
+      result = await devWalletGateway.createCampaignFromBalance(wallet, {
+        posterWalletAddress: campaign.posterWalletAddress as `0x${string}`,
+        tokenAddress: campaign.tokenAddress as `0x${string}`,
+        amount,
+        durationSeconds: BigInt(campaign.durationSeconds),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('InsufficientBalance') || message.includes('0xf4d678b8')) {
+        throw new Error(`You do not have enough available ${tokenBalance.symbol} in escrow for this campaign.`);
+      }
+      throw new Error('I could not lock funds on-chain for this campaign. Please check your balances and try again.');
+    }
 
     let updated = campaign;
     if (updated.status === 'DRAFT') updated = await campaigns.advance(updated.id, 'AWAITING_FUNDS');
@@ -385,6 +416,31 @@ export function createAppUseCases(dependencies: {
       return { wallet, balances };
     },
 
+    async clearDevState(telegramUserId: string) {
+      const wallet = await devWallets.findByTelegramUserId(telegramUserId);
+      const user = await users.findByTelegramUserId(telegramUserId);
+
+      await campaigns.deleteByParticipant({ advertiserUserId: pendingAdvertiserUserId(telegramUserId) });
+
+      if (wallet) {
+        await campaigns.deleteByParticipant({
+          advertiserWalletAddress: wallet.address,
+          posterWalletAddress: wallet.address,
+        });
+      }
+
+      if (user) {
+        await channels.deleteByOwnerUserId(user.id);
+        await campaigns.deleteByParticipant({
+          advertiserUserId: user.id,
+          posterUserId: user.id,
+        });
+        await users.deleteByTelegramUserId(telegramUserId);
+      }
+
+      await devWallets.deleteByTelegramUserId(telegramUserId);
+    },
+
     async signDevWalletMessage(telegramUserId: string, message: string) {
       const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
@@ -420,6 +476,16 @@ export function createAppUseCases(dependencies: {
 function parseTokenAmount(value: string, decimals: number): bigint {
   const [whole, fraction = ''] = value.split('.');
   return BigInt(whole || '0') * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, '0').slice(0, decimals) || '0');
+}
+
+function formatTokenAmount(value: bigint, decimals: number): string {
+  const divisor = 10n ** BigInt(decimals);
+  const whole = value / divisor;
+  const fraction = value % divisor;
+  if (fraction === 0n) return whole.toString();
+
+  const paddedFraction = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
+  return `${whole.toString()}.${paddedFraction}`;
 }
 
 function pendingAdvertiserUserId(telegramUserId: string): string {

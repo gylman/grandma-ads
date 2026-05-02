@@ -88,6 +88,15 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           const user = await models.User.findOne({ id: userId }).lean<UserDocument | null>();
           return user ? toUser(user) : null;
         },
+
+        async findByTelegramUserId(telegramUserId: string): Promise<User | null> {
+          const user = await models.User.findOne({ telegramUserId }).lean<UserDocument | null>();
+          return user ? toUser(user) : null;
+        },
+
+        async deleteByTelegramUserId(telegramUserId: string): Promise<void> {
+          await models.User.deleteMany({ telegramUserId });
+        },
       },
 
       channels: {
@@ -166,6 +175,10 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           const filter = ownerUserId ? { ownerUserId } : {};
           const channels = await models.Channel.find(filter).sort({ createdAt: -1 }).lean<ChannelDocument[]>();
           return channels.map(toChannel);
+        },
+
+        async deleteByOwnerUserId(ownerUserId: string): Promise<void> {
+          await models.Channel.deleteMany({ ownerUserId });
         },
       },
 
@@ -256,6 +269,17 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
 
           return { check, result };
         },
+
+        async deleteByParticipant(input): Promise<void> {
+          const or: Array<Record<string, string>> = [];
+          if (input.advertiserUserId) or.push({ advertiserUserId: input.advertiserUserId });
+          if (input.advertiserWalletAddress) or.push({ advertiserWalletAddress: input.advertiserWalletAddress });
+          if (input.posterUserId) or.push({ posterUserId: input.posterUserId });
+          if (input.posterWalletAddress) or.push({ posterWalletAddress: input.posterWalletAddress });
+
+          if (or.length === 0) return;
+          await models.Campaign.deleteMany({ $or: or } as never);
+        },
       },
 
       devWallets: {
@@ -267,6 +291,10 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
         async save(wallet: DevWallet): Promise<DevWallet> {
           await models.DevWallet.updateOne({ telegramUserId: wallet.telegramUserId }, { $set: wallet }, { upsert: true });
           return wallet;
+        },
+
+        async deleteByTelegramUserId(telegramUserId: string): Promise<void> {
+          await models.DevWallet.deleteMany({ telegramUserId });
         },
       },
     },

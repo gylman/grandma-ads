@@ -1,5 +1,5 @@
 import { DynamicEvmWalletClient } from '@dynamic-labs-wallet/node-evm';
-import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseEther, parseUnits } from 'viem';
+import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseUnits } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { foundry, sepolia } from 'viem/chains';
 import { DevWalletGateway } from '../../../application/ports/devWalletGateway';
@@ -158,105 +158,97 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
 
     approveEscrow(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
-      return withGasTopUp(wallet, async () => {
-        if (wallet.provider === 'dynamic') {
-          return signAndSendContract(wallet, {
-            address: config.usdcTokenAddress as `0x${string}`,
-            abi: erc20Abi,
-            functionName: 'approve',
-            args: [config.escrowContractAddress as `0x${string}`, amount],
-          });
-        }
-
-        const account = localAccount(wallet);
-        return createWalletClient({ account, chain, transport }).writeContract({
+      if (wallet.provider === 'dynamic') {
+        return signAndSendContract(wallet, {
           address: config.usdcTokenAddress as `0x${string}`,
           abi: erc20Abi,
           functionName: 'approve',
           args: [config.escrowContractAddress as `0x${string}`, amount],
         });
+      }
+
+      const account = localAccount(wallet);
+      return createWalletClient({ account, chain, transport }).writeContract({
+        address: config.usdcTokenAddress as `0x${string}`,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [config.escrowContractAddress as `0x${string}`, amount],
       });
     },
 
     deposit(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
-      return withGasTopUp(wallet, async () => {
-        if (wallet.provider === 'dynamic') {
-          return signAndSendContract(wallet, {
-            address: config.escrowContractAddress as `0x${string}`,
-            abi: adEscrowAbi,
-            functionName: 'deposit',
-            args: [config.usdcTokenAddress as `0x${string}`, amount],
-          });
-        }
-
-        const account = localAccount(wallet);
-        return createWalletClient({ account, chain, transport }).writeContract({
+      if (wallet.provider === 'dynamic') {
+        return signAndSendContract(wallet, {
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
           functionName: 'deposit',
           args: [config.usdcTokenAddress as `0x${string}`, amount],
         });
+      }
+
+      const account = localAccount(wallet);
+      return createWalletClient({ account, chain, transport }).writeContract({
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'deposit',
+        args: [config.usdcTokenAddress as `0x${string}`, amount],
       });
     },
 
     withdraw(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
-      return withGasTopUp(wallet, async () => {
-        if (wallet.provider === 'dynamic') {
-          return signAndSendContract(wallet, {
-            address: config.escrowContractAddress as `0x${string}`,
-            abi: adEscrowAbi,
-            functionName: 'withdraw',
-            args: [config.usdcTokenAddress as `0x${string}`, amount],
-          });
-        }
-
-        const account = localAccount(wallet);
-        return createWalletClient({ account, chain, transport }).writeContract({
+      if (wallet.provider === 'dynamic') {
+        return signAndSendContract(wallet, {
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
           functionName: 'withdraw',
           args: [config.usdcTokenAddress as `0x${string}`, amount],
         });
+      }
+
+      const account = localAccount(wallet);
+      return createWalletClient({ account, chain, transport }).writeContract({
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'withdraw',
+        args: [config.usdcTokenAddress as `0x${string}`, amount],
       });
     },
 
-    createCampaignFromBalance(wallet, input) {
+    async createCampaignFromBalance(wallet, input) {
       assertConfigured(config);
-      return withGasTopUp(wallet, async () => {
-        const request = {
-          address: config.escrowContractAddress as `0x${string}`,
-          abi: adEscrowAbi,
-          functionName: 'createCampaignFromBalance',
-          args: [input.posterWalletAddress, input.tokenAddress, input.amount, input.durationSeconds],
-        } as const;
+      const request = {
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'createCampaignFromBalance',
+        args: [input.posterWalletAddress, input.tokenAddress, input.amount, input.durationSeconds],
+      } as const;
 
-        if (wallet.provider === 'dynamic') {
-          const simulation = await publicClient.simulateContract({
-            account: wallet.address,
-            ...request,
-          });
-          const txHash = await signAndSendPreparedTransaction(wallet, simulation.request);
-          return {
-            onchainCampaignId: simulation.result,
-            txHash,
-          };
-        }
-
-        const account = localAccount(wallet);
-        const walletClient = createWalletClient({ account, chain, transport });
+      if (wallet.provider === 'dynamic') {
         const simulation = await publicClient.simulateContract({
-          account,
+          account: wallet.address,
           ...request,
         });
-        const txHash = await walletClient.writeContract(simulation.request);
-
+        const txHash = await signAndSendPreparedTransaction(wallet, simulation.request);
         return {
           onchainCampaignId: simulation.result,
           txHash,
         };
+      }
+
+      const account = localAccount(wallet);
+      const walletClient = createWalletClient({ account, chain, transport });
+      const simulation = await publicClient.simulateContract({
+        account,
+        ...request,
       });
+      const txHash = await walletClient.writeContract(simulation.request);
+
+      return {
+        onchainCampaignId: simulation.result,
+        txHash,
+      };
     },
   };
 
@@ -277,30 +269,6 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
     return rawSender.sendRawTransaction({
       serializedTransaction: serializedTransaction as `0x${string}`,
     });
-  }
-
-  async function withGasTopUp<T>(wallet: DevWallet, action: () => Promise<T>): Promise<T> {
-    await ensureGas(wallet.address);
-    return action();
-  }
-
-  async function ensureGas(address: `0x${string}`): Promise<void> {
-    const balance = await publicClient.getBalance({ address });
-    const minimum = parseEther('0.01');
-
-    if (balance >= minimum) return;
-
-    if (!config.devWalletMinterPrivateKey) {
-      throw new Error('DEV_WALLET_MINTER_PRIVATE_KEY is required to top up dev wallet gas');
-    }
-
-    const funder = privateKeyToAccount(config.devWalletMinterPrivateKey as `0x${string}`);
-    const txHash = await createWalletClient({ account: funder, chain, transport }).sendTransaction({
-      to: address,
-      value: config.devWalletEthTopUpAmount,
-    });
-
-    await publicClient.waitForTransactionReceipt({ hash: txHash });
   }
 }
 

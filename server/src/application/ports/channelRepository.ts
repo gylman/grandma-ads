@@ -16,4 +16,5 @@ export interface ChannelRepository {
   findVerifiedByUsername(telegramChannelUsername: string): Promise<Channel | null>;
   updateStatus(channelId: string, status: ChannelStatus, verificationPostUrl?: string): Promise<Channel>;
   list(ownerUserId?: string): Promise<Channel[]>;
+  deleteByOwnerUserId(ownerUserId: string): Promise<void>;
 }

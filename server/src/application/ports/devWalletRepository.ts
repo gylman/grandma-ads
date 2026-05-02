@@ -10,4 +10,5 @@ export type DevWallet = {
 export interface DevWalletRepository {
   findByTelegramUserId(telegramUserId: string): Promise<DevWallet | null>;
   save(wallet: DevWallet): Promise<DevWallet>;
+  deleteByTelegramUserId(telegramUserId: string): Promise<void>;
 }

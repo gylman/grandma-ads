@@ -59,7 +59,7 @@ type TelegramResponse<T> = {
 };
 
 type CampaignMessagePurpose = "DRAFT" | "OFFER";
-type PromptType = "CAMPAIGN_DRAFT" | "REVISE_COPY" | "REGISTER_CHANNEL" | "DEV_MINT" | "DEV_DEPOSIT" | "DEV_WITHDRAW";
+type PromptType = "CAMPAIGN_DRAFT" | "REVISE_COPY" | "REGISTER_CHANNEL" | "DEV_MINT" | "DEV_DEPOSIT" | "DEV_WITHDRAW" | "COUNTER_OFFER";
 
 export type TelegramLongPollingBot = {
   stop(): void;
@@ -163,22 +163,63 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     };
   }
 
-  function draftActionButtons(campaignId: string): TelegramReplyMarkup {
+  async function canShowSendOfferButton(telegramUserId: string, campaign: Campaign): Promise<boolean> {
+    if (!["DRAFT", "AWAITING_FUNDS", "FUNDED"].includes(campaign.status)) return false;
+
+    const wallet = await useCases.getDevWallet(telegramUserId);
+    if (!wallet) return false;
+
+    try {
+      const overview = await useCases.getDevWalletMajorBalances(telegramUserId);
+      const token = overview.balances.find((balance) => balance.address?.toLowerCase() === campaign.tokenAddress.toLowerCase());
+      if (!token || token.escrowBalance === null) return false;
+
+      const needed = parseTokenAmountForButton(campaign.amount, token.decimals);
+      return token.escrowBalance >= needed;
+    } catch {
+      return false;
+    }
+  }
+
+  async function buildDraftActionButtons(telegramUserId: string, campaign: Campaign): Promise<TelegramReplyMarkup> {
+    const rows: TelegramInlineKeyboardButton[][] = [[{ text: "Revise Copy", callback_data: `campaign:revise:${campaign.id}` }]];
+    if (await canShowSendOfferButton(telegramUserId, campaign)) {
+      rows.push([{ text: "Send Offer", callback_data: `campaign:send_offer:${campaign.id}` }]);
+    }
+
+    return { inline_keyboard: rows };
+  }
+
+  function devWalletButtons(hasWallet: boolean): TelegramReplyMarkup {
+    if (!hasWallet) {
+      return {
+        inline_keyboard: [[{ text: "Create Wallet", callback_data: "dev:create_wallet" }]],
+      };
+    }
+
     return {
       inline_keyboard: [
-        [{ text: "Revise Copy", callback_data: `campaign:revise:${campaignId}` }],
-        [{ text: "Send Offer", callback_data: `campaign:send_offer:${campaignId}` }],
+        [{ text: "Check Balance", callback_data: "dev:balance" }],
+        [{ text: "Mint", callback_data: "dev:prompt_mint" }],
+        [{ text: "Deposit", callback_data: "dev:prompt_deposit" }],
+        [{ text: "Withdraw", callback_data: "dev:prompt_withdraw" }],
       ],
     };
   }
 
-  function devWalletButtons(): TelegramReplyMarkup {
+  function offerActionButtons(campaignId: string): TelegramReplyMarkup {
     return {
       inline_keyboard: [
-        [{ text: "Mint USDC", callback_data: "dev:prompt_mint" }],
-        [{ text: "Deposit USDC", callback_data: "dev:prompt_deposit" }],
-        [{ text: "Withdraw USDC", callback_data: "dev:prompt_withdraw" }],
+        [{ text: "Accept", callback_data: `offer:accept:${campaignId}` }],
+        [{ text: "Reject", callback_data: `offer:reject:${campaignId}` }],
+        [{ text: "Counter", callback_data: `offer:counter:${campaignId}` }],
       ],
+    };
+  }
+
+  function checkBalanceButton(): TelegramReplyMarkup {
+    return {
+      inline_keyboard: [[{ text: "Check Balance", callback_data: "dev:balance" }]],
     };
   }
 
@@ -200,7 +241,11 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
   async function sendDevWalletOverview(chatId: number, telegramUserId: string): Promise<boolean> {
     const wallet = await useCases.getDevWallet(telegramUserId);
     if (!wallet) {
-      await sendMessage(chatId, ["No wallet is linked to this Telegram account yet.", "When you are ready to send a funded offer, I will ask you to create one with /dev_create_wallet."].join("\n"));
+      await sendMessage(
+        chatId,
+        ["No wallet is linked to this Telegram account yet.", "Click Create Wallet to continue."].join("\n"),
+        { replyMarkup: devWalletButtons(false) },
+      );
       return false;
     }
 
@@ -473,11 +518,13 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         "",
         "Recommended copy is in the next message so it is easy to copy on mobile.",
       ].join("\n"),
-      { replyMarkup: draftActionButtons(result.campaign.id) },
     );
     rememberCampaignMessage(chatId, draftMessage, result.campaign.id, "DRAFT");
     if (result.campaign.approvedText) {
-      const copyMessage = await sendMessage(chatId, result.campaign.approvedText);
+      const actions = await buildDraftActionButtons(telegramUserId, result.campaign);
+      const copyMessage = await sendMessage(chatId, result.campaign.approvedText, {
+        replyMarkup: actions,
+      });
       rememberCampaignMessage(chatId, copyMessage, result.campaign.id, "DRAFT");
     }
   }
@@ -575,16 +622,18 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     await sendMessage(chatId, "Counter sent to the advertiser.");
   }
 
-  async function reviseCampaignCopy(chatId: number, campaignId: string, instruction: string | null): Promise<void> {
+  async function reviseCampaignCopy(chatId: number, telegramUserId: string, campaignId: string, instruction: string | null): Promise<void> {
     const result = await useCases.reviseCampaignCopy(campaignId, instruction);
     const revisionMessage = await sendMessage(
       chatId,
       [`Updated copy for ${result.campaign.id}.`, "", "The new copy is in the next message so it is easy to copy on mobile.", `Why: ${result.suggestion.rationale}`].join("\n"),
-      { replyMarkup: draftActionButtons(result.campaign.id) },
     );
     rememberCampaignMessage(chatId, revisionMessage, result.campaign.id, "DRAFT");
     if (result.campaign.approvedText) {
-      const copyMessage = await sendMessage(chatId, result.campaign.approvedText);
+      const actions = await buildDraftActionButtons(telegramUserId, result.campaign);
+      const copyMessage = await sendMessage(chatId, result.campaign.approvedText, {
+        replyMarkup: actions,
+      });
       rememberCampaignMessage(chatId, copyMessage, result.campaign.id, "DRAFT");
     }
   }
@@ -619,33 +668,38 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         [
           "The campaign draft is ready. Before I can send it to the publisher, we need a wallet for the funded offer.",
           "",
-          "Run /dev_create_wallet, add funds, then send offer again.",
+          'Click "Create Wallet", add funds, then send offer again.',
         ].join("\n"),
+        {
+          replyMarkup: {
+            inline_keyboard: [[{ text: "Create Wallet", callback_data: "dev:create_wallet" }]],
+          },
+        },
       );
       return;
     }
     await sendDevWalletOverview(chatId, telegramUserId);
     const result = await useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId);
     const campaign = result.campaign;
-    const offer = await useCases.generatePosterOffer(campaign.id);
     const poster = campaign.posterWalletAddress ? await useCases.getUserByWallet(campaign.posterWalletAddress) : null;
     if (!poster?.telegramUserId) throw new Error("Poster Telegram account is not linked.");
 
     const offerMessage = await sendMessage(
       Number(poster.telegramUserId),
       [
-        offer ?? formatCampaignSummary(campaign),
+        `Offer for ${campaign.targetTelegramChannelUsername ?? "this channel"}:`,
+        "",
+        `Receive ${campaign.amount} tokens to publish the approved sponsored post and keep it live for ${formatDuration(campaign.durationSeconds)}.`,
+        "Payment condition: payment is made only after the post is verified to match the approved content and remain live for the required duration.",
         "",
         "Approved ad copy is in the next message so it is easy to copy on mobile.",
-        "",
-        `Accept: /accept ${campaign.id}`,
-        `Reject: /reject ${campaign.id}`,
-        `Counter: reply to this message with your terms, or use /counter ${campaign.id} 150 USDC for 24h`,
       ].join("\n"),
     );
     rememberCampaignMessage(Number(poster.telegramUserId), offerMessage, campaign.id, "OFFER");
     if (campaign.approvedText) {
-      const copyMessage = await sendMessage(Number(poster.telegramUserId), campaign.approvedText);
+      const copyMessage = await sendMessage(Number(poster.telegramUserId), campaign.approvedText, {
+        replyMarkup: offerActionButtons(campaign.id),
+      });
       rememberCampaignMessage(Number(poster.telegramUserId), copyMessage, campaign.id, "OFFER");
     }
     await sendMessage(
@@ -707,16 +761,34 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         await runDevCommand(chatId, async () => {
           const shown = await sendDevWalletOverview(chatId, telegramUserId);
           if (shown) {
-            await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons() });
+            await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
+          }
+        });
+        return;
+      }
+      if (data === "dev:balance") {
+        await runDevCommand(chatId, async () => {
+          const shown = await sendDevWalletOverview(chatId, telegramUserId);
+          if (shown) {
+            await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
           }
         });
         return;
       }
       if (data === "dev:prompt_mint") {
         await runDevCommand(chatId, async () => {
-          await sendPromptForReply(chatId, "Reply to this message with the amount to mint in USDC format.\nExample: 1000", "DEV_MINT", {
-            placeholder: "1000",
+          await sendPromptForReply(chatId, "Reply with amount and token.\nExample: 1000 USDC", "DEV_MINT", {
+            placeholder: "1000 USDC",
           });
+        });
+        return;
+      }
+      if (data === "dev:create_wallet") {
+        await runDevCommand(chatId, async () => {
+          const wallet = await useCases.ensureDevWallet(telegramUserId);
+          await sendMessage(chatId, `Dev wallet:\n${wallet.address}\n\nProvider: ${wallet.provider}`);
+          await sendDevWalletOverview(chatId, telegramUserId);
+          await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
         });
         return;
       }
@@ -724,9 +796,9 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         await runDevCommand(chatId, async () => {
           await sendPromptForReply(
             chatId,
-            "Reply to this message with the amount to deposit to escrow.\nFormat: number in USDC units (6 decimals max).\nExample: 100",
+            "Reply with amount and token to deposit.\nExample: 100 USDC",
             "DEV_DEPOSIT",
-            { placeholder: "100" },
+            { placeholder: "100 USDC" },
           );
         });
         return;
@@ -735,9 +807,9 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         await runDevCommand(chatId, async () => {
           await sendPromptForReply(
             chatId,
-            "Reply to this message with the amount to withdraw from escrow.\nFormat: number in USDC units.\nExample: 25",
+            "Reply with amount and token to withdraw.\nExample: 25 USDC",
             "DEV_WITHDRAW",
-            { placeholder: "25" },
+            { placeholder: "25 USDC" },
           );
         });
         return;
@@ -758,6 +830,33 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         await runDevCommand(chatId, async () => {
           if (!campaignId) throw new Error("Campaign id is missing for send offer.");
           await sendOfferFromCampaignId(chatId, telegramUserId, campaignId);
+        });
+        return;
+      }
+      if (data.startsWith("offer:accept:")) {
+        const campaignId = data.replace("offer:accept:", "").trim();
+        await runDevCommand(chatId, async () => {
+          if (!campaignId) throw new Error("Campaign id is missing for accept.");
+          await acceptCampaignAndPublish(chatId, telegramUserId, campaignId);
+        });
+        return;
+      }
+      if (data.startsWith("offer:reject:")) {
+        const campaignId = data.replace("offer:reject:", "").trim();
+        await runDevCommand(chatId, async () => {
+          if (!campaignId) throw new Error("Campaign id is missing for reject.");
+          await rejectCampaign(chatId, telegramUserId, campaignId);
+        });
+        return;
+      }
+      if (data.startsWith("offer:counter:")) {
+        const campaignId = data.replace("offer:counter:", "").trim();
+        await runDevCommand(chatId, async () => {
+          if (!campaignId) throw new Error("Campaign id is missing for counter.");
+          await sendPromptForReply(chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {
+            campaignId,
+            placeholder: "150 USDC for 24h",
+          });
         });
         return;
       }
@@ -785,25 +884,32 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         }
         if (pendingPrompt.type === "REVISE_COPY") {
           if (!pendingPrompt.campaignId) throw new Error("Campaign context is missing for this revise prompt.");
-          await reviseCampaignCopy(chatId, pendingPrompt.campaignId, text);
+          await reviseCampaignCopy(chatId, telegramUserId, pendingPrompt.campaignId, text);
           return;
         }
         if (pendingPrompt.type === "DEV_MINT") {
-          const amount = parseDevUsdcAmount(text);
+          const amount = parseUsdcAmountInput(text);
           const result = await useCases.mintDevWalletMockUsdc(telegramUserId, amount);
-          await sendMessage(chatId, `Minted ${formatDevUsdcAmount(amount)} mock USDC to ${result.wallet.address}.\nTx: ${result.txHash}`);
+          await sendMessage(chatId, `Minted ${formatDevUsdcAmount(amount)} mock USDC to ${result.wallet.address}.\nTx: ${result.txHash}`, {
+            replyMarkup: checkBalanceButton(),
+          });
           return;
         }
         if (pendingPrompt.type === "DEV_DEPOSIT") {
-          const amount = parseDevUsdcAmount(text);
+          const amount = parseUsdcAmountInput(text);
           const result = await useCases.depositDevWalletMockUsdc(telegramUserId, amount);
           await sendMessage(chatId, [`Deposited ${formatDevUsdcAmount(amount)} mock USDC into escrow with a gasless relay.`, `Sponsored tx: ${result.txHash}`].join("\n"));
           return;
         }
         if (pendingPrompt.type === "DEV_WITHDRAW") {
-          const amount = parseDevUsdcAmount(text);
+          const amount = parseUsdcAmountInput(text);
           const result = await useCases.withdrawDevWalletMockUsdc(telegramUserId, amount);
           await sendMessage(chatId, `Withdrew ${formatDevUsdcAmount(amount)} mock USDC from escrow.\nTx: ${result.txHash}`);
+          return;
+        }
+        if (pendingPrompt.type === "COUNTER_OFFER") {
+          if (!pendingPrompt.campaignId) throw new Error("Campaign context is missing for this counter prompt.");
+          await counterCampaign(chatId, pendingPrompt.campaignId, text);
         }
       });
       return;
@@ -821,7 +927,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     if (replyCampaignContext && text && !text.startsWith("/")) {
       await runDevCommand(chatId, async () => {
         if (replyCampaignContext.purpose === "DRAFT") {
-          await reviseCampaignCopy(chatId, replyCampaignContext.campaignId, text);
+          await reviseCampaignCopy(chatId, telegramUserId, replyCampaignContext.campaignId, text);
           return;
         }
 
@@ -896,7 +1002,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         const campaignId = firstArgLooksLikeCampaign ? firstArg : campaignIdFromReply(message);
         const instruction = (firstArgLooksLikeCampaign ? restArgs : [firstArg, ...restArgs]).filter(Boolean).join(" ");
         if (!campaignId) throw new Error("Usage: /revise_copy <campaignId> <instruction>");
-        await reviseCampaignCopy(chatId, campaignId, instruction || null);
+        await reviseCampaignCopy(chatId, telegramUserId, campaignId, instruction || null);
       });
       return;
     }
@@ -948,7 +1054,14 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         const firstArgLooksLikeCampaign = Boolean(firstArg?.startsWith("cmp_"));
         const campaignId = firstArgLooksLikeCampaign ? firstArg : replyCampaignId;
         const counterMessage = (firstArgLooksLikeCampaign ? restArgs : [firstArg, ...restArgs]).filter(Boolean).join(" ").trim();
-        if (!campaignId || !counterMessage) throw new Error("Usage: /counter <campaignId> <terms>");
+        if (!campaignId) throw new Error("Usage: /counter <campaignId> <terms>, or reply to an offer and use /counter.");
+        if (!counterMessage) {
+          await sendPromptForReply(chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {
+            campaignId,
+            placeholder: "150 USDC for 24h",
+          });
+          return;
+        }
         await counterCampaign(chatId, campaignId, counterMessage);
       });
       return;
@@ -979,7 +1092,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         const wallet = await useCases.ensureDevWallet(telegramUserId);
         await sendMessage(chatId, `Dev wallet:\n${wallet.address}\n\nProvider: ${wallet.provider}`);
         await sendDevWalletOverview(chatId, telegramUserId);
-        await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons() });
+        await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
       });
       return;
     }
@@ -1003,7 +1116,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
       await runDevCommand(chatId, async () => {
         const shown = await sendDevWalletOverview(chatId, telegramUserId);
         if (shown) {
-          await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons() });
+          await sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
         }
       });
       return;
@@ -1011,15 +1124,17 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
 
     if (text.startsWith("/dev_mint")) {
       await runDevCommand(chatId, async () => {
-        const [, amountFromCommand] = text.split(/\s+/);
-        if (amountFromCommand) {
-          const amount = parseDevUsdcAmount(amountFromCommand);
+        const payload = text.replace(/^\/dev_mint(?:@\w+)?\s*/i, "").trim();
+        if (payload) {
+          const amount = parseUsdcAmountInput(payload);
           const result = await useCases.mintDevWalletMockUsdc(telegramUserId, amount);
-          await sendMessage(chatId, `Minted ${formatDevUsdcAmount(amount)} mock USDC to ${result.wallet.address}.\nTx: ${result.txHash}`);
+          await sendMessage(chatId, `Minted ${formatDevUsdcAmount(amount)} mock USDC to ${result.wallet.address}.\nTx: ${result.txHash}`, {
+            replyMarkup: checkBalanceButton(),
+          });
           return;
         }
-        await sendPromptForReply(chatId, "Reply to this message with the amount to mint in USDC format.\nExample: 1000", "DEV_MINT", {
-          placeholder: "1000",
+        await sendPromptForReply(chatId, "Reply with amount and token.\nExample: 1000 USDC", "DEV_MINT", {
+          placeholder: "1000 USDC",
         });
       });
       return;
@@ -1027,18 +1142,18 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
 
     if (text.startsWith("/dev_deposit")) {
       await runDevCommand(chatId, async () => {
-        const [, amountFromCommand] = text.split(/\s+/);
-        if (amountFromCommand) {
-          const amount = parseDevUsdcAmount(amountFromCommand);
+        const payload = text.replace(/^\/dev_deposit(?:@\w+)?\s*/i, "").trim();
+        if (payload) {
+          const amount = parseUsdcAmountInput(payload);
           const result = await useCases.depositDevWalletMockUsdc(telegramUserId, amount);
           await sendMessage(chatId, [`Deposited ${formatDevUsdcAmount(amount)} mock USDC into escrow with a gasless relay.`, `Sponsored tx: ${result.txHash}`].join("\n"));
           return;
         }
         await sendPromptForReply(
           chatId,
-          "Reply to this message with the amount to deposit to escrow.\nFormat: number in USDC units (6 decimals max).\nExample: 100",
+          "Reply with amount and token to deposit.\nExample: 100 USDC",
           "DEV_DEPOSIT",
-          { placeholder: "100" },
+          { placeholder: "100 USDC" },
         );
       });
       return;
@@ -1046,18 +1161,18 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
 
     if (text.startsWith("/dev_withdraw")) {
       await runDevCommand(chatId, async () => {
-        const [, amountFromCommand] = text.split(/\s+/);
-        if (amountFromCommand) {
-          const amount = parseDevUsdcAmount(amountFromCommand);
+        const payload = text.replace(/^\/dev_withdraw(?:@\w+)?\s*/i, "").trim();
+        if (payload) {
+          const amount = parseUsdcAmountInput(payload);
           const result = await useCases.withdrawDevWalletMockUsdc(telegramUserId, amount);
           await sendMessage(chatId, `Withdrew ${formatDevUsdcAmount(amount)} mock USDC from escrow.\nTx: ${result.txHash}`);
           return;
         }
         await sendPromptForReply(
           chatId,
-          "Reply to this message with the amount to withdraw from escrow.\nFormat: number in USDC units.\nExample: 25",
+          "Reply with amount and token to withdraw.\nExample: 25 USDC",
           "DEV_WITHDRAW",
-          { placeholder: "25" },
+          { placeholder: "25 USDC" },
         );
       });
       return;
@@ -1285,7 +1400,7 @@ function formatMajorBalances(balances: Awaited<ReturnType<AppUseCases["getDevWal
   const hasSpendableToken = visible.some((balance) => !balance.isNative && (balance.walletBalance > 0n || (balance.escrowBalance ?? 0n) > 0n));
   if (!hasSpendableToken) {
     lines.push("No USDC, USDT, DAI, or WBTC balance found yet.");
-    lines.push("Send one of those tokens to the wallet, then use /balance to refresh.");
+    lines.push('Send one of those tokens to the wallet, then click "Check Balance".');
   }
 
   return lines;
@@ -1367,6 +1482,30 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, "/");
+}
+
+function parseUsdcAmountInput(value: string): bigint {
+  const match = value.trim().match(/^([0-9]+(?:\.[0-9]{1,6})?)\s*([A-Za-z]*)$/);
+  if (!match) {
+    throw new Error('Amount format should look like "100 USDC".');
+  }
+
+  const amount = match[1];
+  const token = (match[2] ?? "").toUpperCase();
+  if (token && token !== "USDC") {
+    throw new Error("Only USDC is supported in this flow right now. Use format like 100 USDC.");
+  }
+
+  return parseDevUsdcAmount(amount);
+}
+
+function parseTokenAmountForButton(value: string, decimals: number): bigint {
+  const normalized = value.trim();
+  if (!normalized) return 0n;
+  const [whole, fraction = ""] = normalized.split(".");
+  const wholePart = BigInt(whole || "0");
+  const fractionPart = BigInt(fraction.padEnd(decimals, "0").slice(0, decimals) || "0");
+  return wholePart * 10n ** BigInt(decimals) + fractionPart;
 }
 
 function sleep(ms: number): Promise<void> {

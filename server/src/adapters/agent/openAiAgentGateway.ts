@@ -128,17 +128,19 @@ export function createOpenAiAgentGateway(config: AppConfig): AgentGateway {
       return result.message || generatePosterOffer(campaign);
     },
 
-    async suggestCounterReply({ campaign, counterMessage }): Promise<CounterOfferSuggestion> {
+    async suggestCounterReply({ campaign, counterMessage, senderRole, recipientRole }): Promise<CounterOfferSuggestion> {
       return requestStructured<CounterOfferSuggestion>({
         schemaName: 'counter_offer_reply',
         schema: counterOfferSchema,
         system: [
-          'You help negotiate Telegram sponsored-post campaign offers.',
-          'Summarize the counteroffer clearly for the advertiser.',
-          'You may suggest a reasonable reply, but you must not finalize changes or approve more money without advertiser confirmation.',
+          'You draft counteroffer messages for Telegram negotiation.',
+          'Write the exact outbound message that the sender will send to the recipient.',
+          'The message must be directed to the recipient (not analysis about them).',
+          'Do not mention assistant limitations, internal process, or that you need to confirm with someone.',
+          'Keep it concise and concrete. Focus on proposed terms and a clear ask/next step.',
           'Return JSON only.',
         ].join('\n'),
-        user: JSON.stringify({ campaign, counterMessage }),
+        user: JSON.stringify({ campaign, counterMessage, senderRole, recipientRole }),
       });
     },
   };

@@ -22,5 +22,10 @@ export interface AgentGateway {
   analyzeCampaignRequest(message: string): Promise<CampaignDraftRecommendation>;
   suggestAdCopy(input: { campaign: Campaign; instruction?: string | null }): Promise<AdCopySuggestion>;
   generatePosterOffer(campaign: Campaign): Promise<string>;
-  suggestCounterReply(input: { campaign: Campaign; counterMessage: string }): Promise<CounterOfferSuggestion>;
+  suggestCounterReply(input: {
+    campaign: Campaign;
+    counterMessage: string;
+    senderRole: 'ADVERTISER' | 'POSTER';
+    recipientRole: 'ADVERTISER' | 'POSTER';
+  }): Promise<CounterOfferSuggestion>;
 }

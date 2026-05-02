@@ -4,9 +4,9 @@ import { campaignOpeningPrompt, formatMissingFields } from "./copy";
 import { sendDevWalletOverview } from "./devWalletFlow";
 import { formatCampaignSummary, formatDuration } from "./formatters";
 import { pendingAdvertiserUserId, pendingAdvertiserWalletAddress } from "./identity";
-import { offerActionButtons } from "./keyboards";
+import { counterDraftActionButtons, counterResponseActionButtons, offerActionButtons } from "./keyboards";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
-import { campaignIdFromReply, rememberCampaignMessage } from "./state";
+import { campaignIdFromReply, counterProposalKey, rememberCampaignMessage } from "./state";
 import { parseDuration, parseTokenAmountForButton, resolveRequestedToken } from "./tokenUtils";
 import { TelegramInlineKeyboardButton, TelegramMessage, TelegramReplyMarkup } from "./types";
 
@@ -211,16 +211,152 @@ export async function rejectCampaign(ctx: TelegramBotContext, chatId: number, te
   await ctx.api.sendMessage(chatId, `Rejected ${campaign.id}.`);
 }
 
-export async function counterCampaign(ctx: TelegramBotContext, chatId: number, campaignId: string, counterMessage: string): Promise<void> {
-  const result = await ctx.useCases.suggestCounterReply(campaignId, counterMessage);
-  const advertiser = await ctx.useCases.getUserByWallet(result.campaign.advertiserWalletAddress);
-  if (advertiser?.telegramUserId) {
-    await ctx.api.sendMessage(
-      Number(advertiser.telegramUserId),
-      [`Counteroffer for ${result.campaign.id}:`, "", result.suggestion.reply, "", `To accept manually: /accept_counter ${result.campaign.id} <amount> <duration>`].join("\n"),
-    );
+export async function counterCampaign(
+  ctx: TelegramBotContext,
+  chatId: number,
+  telegramUserId: string,
+  campaignId: string,
+  counterMessage: string,
+): Promise<void> {
+  const wallet = await ctx.useCases.getDevWallet(telegramUserId);
+  if (!wallet) throw new Error("No dev wallet exists yet. Use /dev_create_wallet first.");
+  const campaign = await ctx.useCases.getCampaign(campaignId);
+  if (!campaign) throw new Error("Campaign not found");
+
+  let recipientTelegramUserId: number | null = null;
+  let senderRole: "ADVERTISER" | "POSTER";
+  let recipientRole: "ADVERTISER" | "POSTER";
+  if (campaign.advertiserWalletAddress.toLowerCase() === wallet.address.toLowerCase()) {
+    senderRole = "ADVERTISER";
+    recipientRole = "POSTER";
+    const poster = campaign.posterWalletAddress ? await ctx.useCases.getUserByWallet(campaign.posterWalletAddress) : null;
+    recipientTelegramUserId = poster?.telegramUserId ? Number(poster.telegramUserId) : null;
+  } else if (campaign.posterWalletAddress?.toLowerCase() === wallet.address.toLowerCase()) {
+    senderRole = "POSTER";
+    recipientRole = "ADVERTISER";
+    const advertiser = await ctx.useCases.getUserByWallet(campaign.advertiserWalletAddress);
+    recipientTelegramUserId = advertiser?.telegramUserId ? Number(advertiser.telegramUserId) : null;
+  } else {
+    throw new Error("Only campaign participants can submit a counteroffer.");
   }
-  await ctx.api.sendMessage(chatId, "Counter sent to the advertiser.");
+  if (!recipientTelegramUserId) {
+    throw new Error("The other party is not linked to Telegram yet.");
+  }
+  const result = await ctx.useCases.suggestCounterReply(campaignId, counterMessage, { senderRole, recipientRole });
+  const updatedCampaign = result.campaign;
+
+  ctx.state.pendingCounterDraftByChat.set(chatId, {
+    campaignId: updatedCampaign.id,
+    suggestionReply: result.suggestion.reply,
+    suggestedAmount: result.suggestion.suggestedAmount,
+    suggestedDurationSeconds: result.suggestion.suggestedDurationSeconds,
+    recipientTelegramUserId,
+    senderTelegramUserId: chatId,
+    senderRole,
+    recipientRole,
+  });
+
+  await ctx.api.sendMessage(
+    chatId,
+    ["Here is your counteroffer draft:", "", result.suggestion.reply, "", "Review it, then send or revise."].join("\n"),
+    { replyMarkup: counterDraftActionButtons(updatedCampaign.id) },
+  );
+}
+
+export async function sendPreparedCounterCampaign(ctx: TelegramBotContext, chatId: number, campaignId: string): Promise<void> {
+  const draft = ctx.state.pendingCounterDraftByChat.get(chatId);
+  if (!draft || draft.campaignId !== campaignId) {
+    throw new Error("No counter draft is ready for this campaign. Create a counter first.");
+  }
+
+  const campaign = await ctx.useCases.getCampaign(campaignId);
+  if (!campaign) throw new Error("Campaign not found");
+  const recipientChatId = draft.recipientTelegramUserId;
+  await ctx.api.sendMessage(
+    recipientChatId,
+    [`Counteroffer for ${campaign.id}:`, "", draft.suggestionReply].join("\n"),
+    { replyMarkup: counterResponseActionButtons(campaign.id) },
+  );
+
+  ctx.state.pendingCounterProposalByChatCampaign.set(counterProposalKey(recipientChatId, campaign.id), {
+    campaignId: campaign.id,
+    suggestionReply: draft.suggestionReply,
+    suggestedAmount: draft.suggestedAmount,
+    suggestedDurationSeconds: draft.suggestedDurationSeconds,
+    senderTelegramUserId: draft.senderTelegramUserId,
+    senderRole: draft.senderRole,
+    recipientRole: draft.recipientRole,
+  });
+
+  ctx.state.pendingCounterDraftByChat.delete(chatId);
+  await ctx.api.sendMessage(chatId, "Counter sent.");
+}
+
+export async function acceptCounterProposal(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
+  const proposal = ctx.state.pendingCounterProposalByChatCampaign.get(counterProposalKey(chatId, campaignId));
+  if (!proposal) throw new Error("No counter proposal is pending for this campaign.");
+  if (!proposal.suggestedAmount || !proposal.suggestedDurationSeconds) {
+    throw new Error("This counter proposal did not include explicit amount and duration. Ask for a revised counter.");
+  }
+
+  const campaign = await ctx.useCases.getCampaign(campaignId);
+  if (!campaign) throw new Error("Campaign not found");
+  const wallet = await ctx.useCases.getDevWallet(telegramUserId);
+  if (!wallet) throw new Error("No dev wallet exists yet. Use /dev_create_wallet first.");
+  if (proposal.recipientRole === "ADVERTISER") {
+    if (campaign.advertiserWalletAddress.toLowerCase() !== wallet.address.toLowerCase()) {
+      throw new Error("Only the advertiser can accept this counter proposal.");
+    }
+  } else if (campaign.posterWalletAddress?.toLowerCase() !== wallet.address.toLowerCase()) {
+    throw new Error("Only the poster can accept this counter proposal.");
+  }
+
+  const updated = await ctx.useCases.acceptCounterOffer(campaignId, proposal.suggestedAmount, proposal.suggestedDurationSeconds);
+  ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
+  await ctx.api.sendMessage(chatId, `Counter accepted. Updated campaign:\n${formatCampaignSummary(updated)}`);
+  await ctx.api.sendMessage(proposal.senderTelegramUserId, `Your counteroffer for ${updated.id} was accepted.`);
+}
+
+export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
+  const proposal = ctx.state.pendingCounterProposalByChatCampaign.get(counterProposalKey(chatId, campaignId));
+  if (!proposal) throw new Error("No counter proposal is pending for this campaign.");
+  const campaign = await ctx.useCases.getCampaign(campaignId);
+  if (!campaign) throw new Error("Campaign not found");
+  const wallet = await ctx.useCases.getDevWallet(telegramUserId);
+  if (!wallet) throw new Error("No dev wallet exists yet. Use /dev_create_wallet first.");
+
+  if (proposal.recipientRole === "ADVERTISER") {
+    if (campaign.advertiserWalletAddress.toLowerCase() !== wallet.address.toLowerCase()) {
+      throw new Error("Only the advertiser can reject this counter proposal.");
+    }
+    const result = await ctx.useCases.rejectCounterOfferAsAdvertiser(telegramUserId, campaignId);
+    ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
+
+    await ctx.api.sendMessage(
+      proposal.senderTelegramUserId,
+      [
+        `Advertiser rejected the counteroffer for ${result.campaign.id}.`,
+        result.txHash ? `Funds were unlocked back to advertiser balance.\nRefund tx: ${result.txHash}` : "Funds were unlocked back to advertiser balance.",
+      ].join("\n"),
+    );
+
+    await ctx.api.sendMessage(
+      chatId,
+      [
+        `Counter rejected for ${result.campaign.id}.`,
+        result.txHash ? `Funds were unlocked back to advertiser balance.\nRefund tx: ${result.txHash}` : "Funds were unlocked back to advertiser balance.",
+      ].join("\n"),
+    );
+    return;
+  }
+
+  if (campaign.posterWalletAddress?.toLowerCase() !== wallet.address.toLowerCase()) {
+    throw new Error("Only the poster can reject this counter proposal.");
+  }
+
+  ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
+  await ctx.api.sendMessage(proposal.senderTelegramUserId, `Poster rejected the counteroffer for ${campaign.id}.`);
+  await ctx.api.sendMessage(chatId, `Counter rejected for ${campaign.id}.`);
 }
 
 export async function reviseCampaignCopy(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string, instruction: string | null): Promise<void> {

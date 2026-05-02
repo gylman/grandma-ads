@@ -359,10 +359,19 @@ export function createAppUseCases(dependencies: {
       return campaigns.advance(campaignId, 'REJECTED');
     },
 
-    async suggestCounterReply(campaignId: string, counterMessage: string) {
+    async suggestCounterReply(
+      campaignId: string,
+      counterMessage: string,
+      roles?: { senderRole: 'ADVERTISER' | 'POSTER'; recipientRole: 'ADVERTISER' | 'POSTER' },
+    ) {
       const campaign = await campaigns.findById(campaignId);
       if (!campaign) throw new Error('Campaign not found');
-      const suggestion = await agent.suggestCounterReply({ campaign, counterMessage });
+      const suggestion = await agent.suggestCounterReply({
+        campaign,
+        counterMessage,
+        senderRole: roles?.senderRole ?? 'POSTER',
+        recipientRole: roles?.recipientRole ?? 'ADVERTISER',
+      });
       const updated = campaign.status === 'OFFERED' ? await campaigns.advance(campaignId, 'NEGOTIATING') : campaign;
       return { campaign: updated, suggestion };
     },
@@ -374,6 +383,25 @@ export function createAppUseCases(dependencies: {
 
       const updated = await campaigns.patch(campaignId, { amount, durationSeconds });
       return campaigns.advance(updated.id, 'OFFERED');
+    },
+
+    async rejectCounterOfferAsAdvertiser(telegramUserId: string, campaignId: string) {
+      const wallet = await devWallets.findByTelegramUserId(telegramUserId);
+      if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
+
+      const campaign = await campaigns.findById(campaignId);
+      if (!campaign) throw new Error('Campaign not found');
+      if (campaign.advertiserWalletAddress.toLowerCase() !== wallet.address.toLowerCase()) {
+        throw new Error('Only the advertiser can reject this counter proposal.');
+      }
+
+      let txHash: `0x${string}` | null = null;
+      if (campaign.onchainCampaignId) {
+        txHash = await blockchain.refundCampaign(BigInt(campaign.onchainCampaignId));
+      }
+
+      const updated = await campaigns.advance(campaign.id, 'REFUNDED');
+      return { campaign: updated, txHash };
     },
 
     async submitPostForVerification(input: SubmitPostInput) {

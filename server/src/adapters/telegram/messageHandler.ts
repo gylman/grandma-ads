@@ -1,5 +1,6 @@
 import {
   acceptCampaignAndPublish,
+  acceptCounterProposal,
   acceptCounterOffer,
   counterCampaign,
   createCampaignDraftFromText,
@@ -8,8 +9,10 @@ import {
   promptCampaignDraft,
   promptRegisterChannel,
   rejectCampaign,
+  rejectCounterProposal,
   resolveSendOfferCampaignId,
   reviseCampaignCopy,
+  sendPreparedCounterCampaign,
   sendOfferFromCampaignId,
   showCampaigns,
   verifyCampaignPostFromUrl,
@@ -66,10 +69,10 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
         await withdrawMockUsdc(ctx, chatId, telegramUserId, text);
         return;
       }
-      if (pendingPrompt.type === "COUNTER_OFFER") {
-        if (!pendingPrompt.campaignId) throw new Error("Campaign context is missing for this counter prompt.");
-        await counterCampaign(ctx, chatId, pendingPrompt.campaignId, text);
-      }
+        if (pendingPrompt.type === "COUNTER_OFFER") {
+          if (!pendingPrompt.campaignId) throw new Error("Campaign context is missing for this counter prompt.");
+          await counterCampaign(ctx, chatId, telegramUserId, pendingPrompt.campaignId, text);
+        }
     });
     return;
   }
@@ -99,7 +102,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
         await rejectCampaign(ctx, chatId, telegramUserId, replyCampaignContext.campaignId);
         return;
       }
-      await counterCampaign(ctx, chatId, replyCampaignContext.campaignId, text);
+      await counterCampaign(ctx, chatId, telegramUserId, replyCampaignContext.campaignId, text);
     });
     return;
   }
@@ -180,13 +183,43 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
       const counterMessage = (firstArgLooksLikeCampaign ? restArgs : [firstArg, ...restArgs]).filter(Boolean).join(" ").trim();
       if (!campaignId) throw new Error("Usage: /counter <campaignId> <terms>, or reply to an offer and use /counter.");
       if (!counterMessage) {
-        await sendPromptForReply(ctx, chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {
-          campaignId,
-          placeholder: "150 USDC for 24h",
-        });
-        return;
-      }
-      await counterCampaign(ctx, chatId, campaignId, counterMessage);
+      await sendPromptForReply(ctx, chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {
+        campaignId,
+        placeholder: "150 USDC for 24h",
+      });
+      return;
+    }
+      await counterCampaign(ctx, chatId, telegramUserId, campaignId, counterMessage);
+    });
+    return;
+  }
+
+  if (text.startsWith("/send_counter")) {
+    await runDevCommand(ctx, chatId, async () => {
+      const [, campaignIdFromCommand] = text.split(/\s+/);
+      const campaignId = campaignIdFromCommand ?? campaignIdFromReply(ctx.state, message);
+      if (!campaignId) throw new Error("Usage: /send_counter <campaignId> or reply to an offer.");
+      await sendPreparedCounterCampaign(ctx, chatId, campaignId);
+    });
+    return;
+  }
+
+  if (text.startsWith("/accept_counter_proposal")) {
+    await runDevCommand(ctx, chatId, async () => {
+      const [, campaignIdFromCommand] = text.split(/\s+/);
+      const campaignId = campaignIdFromCommand ?? campaignIdFromReply(ctx.state, message);
+      if (!campaignId) throw new Error("Usage: /accept_counter_proposal <campaignId> or reply to counter message.");
+      await acceptCounterProposal(ctx, chatId, telegramUserId, campaignId);
+    });
+    return;
+  }
+
+  if (text.startsWith("/reject_counter_proposal")) {
+    await runDevCommand(ctx, chatId, async () => {
+      const [, campaignIdFromCommand] = text.split(/\s+/);
+      const campaignId = campaignIdFromCommand ?? campaignIdFromReply(ctx.state, message);
+      if (!campaignId) throw new Error("Usage: /reject_counter_proposal <campaignId> or reply to counter message.");
+      await rejectCounterProposal(ctx, chatId, telegramUserId, campaignId);
     });
     return;
   }

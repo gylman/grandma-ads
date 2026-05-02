@@ -38,6 +38,25 @@ export function offerActionButtons(campaignId: string): TelegramReplyMarkup {
   };
 }
 
+export function counterDraftActionButtons(campaignId: string): TelegramReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Revise Counter", callback_data: `counter_draft:revise:${campaignId}` }],
+      [{ text: "Send Counter Offer", callback_data: `counter_draft:send:${campaignId}` }],
+    ],
+  };
+}
+
+export function counterResponseActionButtons(campaignId: string): TelegramReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "Accept", callback_data: `counter_response:accept:${campaignId}` }],
+      [{ text: "Reject", callback_data: `counter_response:reject:${campaignId}` }],
+      [{ text: "Counter", callback_data: `counter_response:counter:${campaignId}` }],
+    ],
+  };
+}
+
 export function checkBalanceButton(): TelegramReplyMarkup {
   return {
     inline_keyboard: [[{ text: "Check Balance", callback_data: "dev:balance" }]],
@@ -53,6 +72,9 @@ export function telegramCommands(custodialDevMode: boolean): Array<{ command: st
     { command: "campaign_draft", description: "Draft a campaign from one message" },
     { command: "revise_copy", description: "Revise approved ad copy" },
     { command: "send_offer", description: "Lock funds and send offer" },
+    { command: "send_counter", description: "Send prepared counteroffer draft" },
+    { command: "accept_counter_proposal", description: "Accept received counter proposal" },
+    { command: "reject_counter_proposal", description: "Reject received counter proposal" },
     { command: "register_channel", description: "Register a Telegram channel" },
     { command: "my_campaigns", description: "List campaigns" },
     { command: "balance", description: "Show balances" },

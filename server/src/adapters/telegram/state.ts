@@ -16,13 +16,40 @@ export type BalanceWatcher = {
 
 export type TelegramBotState = ReturnType<typeof createTelegramBotState>;
 
+export type CounterDraft = {
+  campaignId: string;
+  suggestionReply: string;
+  suggestedAmount: string | null;
+  suggestedDurationSeconds: number | null;
+  recipientTelegramUserId: number;
+  senderTelegramUserId: number;
+  senderRole: "ADVERTISER" | "POSTER";
+  recipientRole: "ADVERTISER" | "POSTER";
+};
+
+export type CounterProposal = {
+  campaignId: string;
+  suggestionReply: string;
+  suggestedAmount: string | null;
+  suggestedDurationSeconds: number | null;
+  senderTelegramUserId: number;
+  senderRole: "ADVERTISER" | "POSTER";
+  recipientRole: "ADVERTISER" | "POSTER";
+};
+
 export function createTelegramBotState() {
   return {
     pendingChannelVerification: new Map<number, string>(),
     pendingPromptByChat: new Map<number, PendingPrompt>(),
     campaignByMessage: new Map<string, { campaignId: string; purpose: CampaignMessagePurpose }>(),
+    pendingCounterDraftByChat: new Map<number, CounterDraft>(),
+    pendingCounterProposalByChatCampaign: new Map<string, CounterProposal>(),
     balanceWatchers: new Map<number, BalanceWatcher>(),
   };
+}
+
+export function counterProposalKey(chatId: number, campaignId: string): string {
+  return `${chatId}:${campaignId}`;
 }
 
 export function rememberCampaignMessage(
@@ -52,6 +79,12 @@ export function clearChatState(state: TelegramBotState, chatId: number): void {
   state.balanceWatchers.delete(chatId);
   state.pendingChannelVerification.delete(chatId);
   state.pendingPromptByChat.delete(chatId);
+  state.pendingCounterDraftByChat.delete(chatId);
+  for (const key of state.pendingCounterProposalByChatCampaign.keys()) {
+    if (key.startsWith(`${chatId}:`)) {
+      state.pendingCounterProposalByChatCampaign.delete(key);
+    }
+  }
 
   for (const [key] of state.campaignByMessage) {
     if (key.startsWith(`${chatId}:`)) {

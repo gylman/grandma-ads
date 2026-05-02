@@ -1,8 +1,11 @@
 import {
   acceptCampaignAndPublish,
+  acceptCounterProposal,
   promptCampaignDraft,
   promptRegisterChannel,
   rejectCampaign,
+  rejectCounterProposal,
+  sendPreparedCounterCampaign,
   sendOfferFromCampaignId,
   showCampaigns,
 } from "./campaignFlow";
@@ -101,6 +104,52 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
     }
     if (data.startsWith("offer:counter:")) {
       const campaignId = data.replace("offer:counter:", "").trim();
+      await runDevCommand(ctx, chatId, async () => {
+        if (!campaignId) throw new Error("Campaign id is missing for counter.");
+        await sendPromptForReply(ctx, chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {
+          campaignId,
+          placeholder: "150 USDC for 24h",
+        });
+      });
+      return;
+    }
+    if (data.startsWith("counter_draft:revise:")) {
+      const campaignId = data.replace("counter_draft:revise:", "").trim();
+      await runDevCommand(ctx, chatId, async () => {
+        if (!campaignId) throw new Error("Campaign id is missing for counter revise.");
+        await sendPromptForReply(ctx, chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {
+          campaignId,
+          placeholder: "150 USDC for 24h",
+        });
+      });
+      return;
+    }
+    if (data.startsWith("counter_draft:send:")) {
+      const campaignId = data.replace("counter_draft:send:", "").trim();
+      await runDevCommand(ctx, chatId, async () => {
+        if (!campaignId) throw new Error("Campaign id is missing for counter send.");
+        await sendPreparedCounterCampaign(ctx, chatId, campaignId);
+      });
+      return;
+    }
+    if (data.startsWith("counter_response:accept:")) {
+      const campaignId = data.replace("counter_response:accept:", "").trim();
+      await runDevCommand(ctx, chatId, async () => {
+        if (!campaignId) throw new Error("Campaign id is missing for counter accept.");
+        await acceptCounterProposal(ctx, chatId, telegramUserId, campaignId);
+      });
+      return;
+    }
+    if (data.startsWith("counter_response:reject:")) {
+      const campaignId = data.replace("counter_response:reject:", "").trim();
+      await runDevCommand(ctx, chatId, async () => {
+        if (!campaignId) throw new Error("Campaign id is missing for counter reject.");
+        await rejectCounterProposal(ctx, chatId, telegramUserId, campaignId);
+      });
+      return;
+    }
+    if (data.startsWith("counter_response:counter:")) {
+      const campaignId = data.replace("counter_response:counter:", "").trim();
       await runDevCommand(ctx, chatId, async () => {
         if (!campaignId) throw new Error("Campaign id is missing for counter.");
         await sendPromptForReply(ctx, chatId, "Reply to this message with your counter offer.", "COUNTER_OFFER", {

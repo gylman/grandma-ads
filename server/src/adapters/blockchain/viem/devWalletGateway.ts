@@ -1,3 +1,4 @@
+import { DynamicEvmWalletClient } from '@dynamic-labs-wallet/node-evm';
 import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseEther, parseUnits } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { foundry, sepolia } from 'viem/chains';
@@ -24,18 +25,53 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
   const chain = config.chainId === sepolia.id ? sepolia : { ...foundry, id: config.chainId };
   const transport = http(config.rpcUrl || undefined);
   const publicClient = createPublicClient({ chain, transport });
+  const rawSender = createWalletClient({ chain, transport });
 
   return {
-    generateWallet(telegramUserId: string): DevWallet {
+    async createWallet(telegramUserId: string): Promise<DevWallet> {
+      if (isDynamicConfigured(config)) {
+        const authenticatedClient = await authenticatedDynamicClient(config);
+        const wallet = await authenticatedClient.createWalletAccount({
+          thresholdSignatureScheme: 'TWO_OF_TWO',
+          backUpToClientShareService: true,
+          onError: (error: Error) => {
+            throw error;
+          },
+        } as never);
+
+        return {
+          telegramUserId,
+          address: wallet.accountAddress as `0x${string}`,
+          provider: 'dynamic',
+          privateKey: null,
+          walletId: wallet.walletId,
+          createdAt: new Date(),
+        };
+      }
+
       const privateKey = generatePrivateKey();
       const account = privateKeyToAccount(privateKey);
 
       return {
         telegramUserId,
         address: account.address,
+        provider: 'local',
         privateKey,
+        walletId: null,
         createdAt: new Date(),
       };
+    },
+
+    async signMessage(wallet: DevWallet, message: string): Promise<`0x${string}`> {
+      if (wallet.provider === 'dynamic') {
+        const authenticatedClient = await authenticatedDynamicClient(config);
+        return (await authenticatedClient.signMessage({
+          accountAddress: wallet.address,
+          message,
+        })) as `0x${string}`;
+      }
+
+      return await localAccount(wallet).signMessage({ message });
     },
 
     async getBalance(wallet: DevWallet) {
@@ -59,6 +95,52 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       return { walletAddress: wallet.address, tokenBalance, escrowBalance };
     },
 
+    async getMajorBalances(wallet: DevWallet) {
+      assertRpcConfigured(config);
+
+      const nativeBalance = await publicClient.getBalance({ address: wallet.address });
+      const tokens = configuredMajorTokens(config);
+      const tokenBalances = await Promise.all(
+        tokens.map(async (token) => {
+          const walletBalance = await publicClient.readContract({
+            address: token.address,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [wallet.address],
+          });
+          const escrowBalance = /^0x[a-fA-F0-9]{40}$/.test(config.escrowContractAddress)
+            ? await publicClient.readContract({
+                address: config.escrowContractAddress as `0x${string}`,
+                abi: adEscrowAbi,
+                functionName: 'balances',
+                args: [wallet.address, token.address],
+              })
+            : null;
+
+          return {
+            symbol: token.symbol,
+            address: token.address,
+            decimals: token.decimals,
+            walletBalance,
+            escrowBalance,
+            isNative: false,
+          };
+        }),
+      );
+
+      return [
+        {
+          symbol: 'ETH',
+          address: null,
+          decimals: 18,
+          walletBalance: nativeBalance,
+          escrowBalance: null,
+          isNative: true,
+        },
+        ...tokenBalances,
+      ];
+    },
+
     mintMockUsdc(to: `0x${string}`, amount: bigint) {
       assertConfigured(config);
       if (!config.devWalletMinterPrivateKey) {
@@ -77,8 +159,16 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
     approveEscrow(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
       return withGasTopUp(wallet, async () => {
-        const account = privateKeyToAccount(wallet.privateKey);
+        if (wallet.provider === 'dynamic') {
+          return signAndSendContract(wallet, {
+            address: config.usdcTokenAddress as `0x${string}`,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [config.escrowContractAddress as `0x${string}`, amount],
+          });
+        }
 
+        const account = localAccount(wallet);
         return createWalletClient({ account, chain, transport }).writeContract({
           address: config.usdcTokenAddress as `0x${string}`,
           abi: erc20Abi,
@@ -91,8 +181,16 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
     deposit(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
       return withGasTopUp(wallet, async () => {
-        const account = privateKeyToAccount(wallet.privateKey);
+        if (wallet.provider === 'dynamic') {
+          return signAndSendContract(wallet, {
+            address: config.escrowContractAddress as `0x${string}`,
+            abi: adEscrowAbi,
+            functionName: 'deposit',
+            args: [config.usdcTokenAddress as `0x${string}`, amount],
+          });
+        }
 
+        const account = localAccount(wallet);
         return createWalletClient({ account, chain, transport }).writeContract({
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
@@ -105,8 +203,16 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
     withdraw(wallet: DevWallet, amount: bigint) {
       assertConfigured(config);
       return withGasTopUp(wallet, async () => {
-        const account = privateKeyToAccount(wallet.privateKey);
+        if (wallet.provider === 'dynamic') {
+          return signAndSendContract(wallet, {
+            address: config.escrowContractAddress as `0x${string}`,
+            abi: adEscrowAbi,
+            functionName: 'withdraw',
+            args: [config.usdcTokenAddress as `0x${string}`, amount],
+          });
+        }
 
+        const account = localAccount(wallet);
         return createWalletClient({ account, chain, transport }).writeContract({
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
@@ -119,14 +225,30 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
     createCampaignFromBalance(wallet, input) {
       assertConfigured(config);
       return withGasTopUp(wallet, async () => {
-        const account = privateKeyToAccount(wallet.privateKey);
-        const walletClient = createWalletClient({ account, chain, transport });
-        const simulation = await publicClient.simulateContract({
-          account,
+        const request = {
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
           functionName: 'createCampaignFromBalance',
-          args: [input.posterWalletAddress, config.usdcTokenAddress as `0x${string}`, input.amount, input.durationSeconds],
+          args: [input.posterWalletAddress, input.tokenAddress, input.amount, input.durationSeconds],
+        } as const;
+
+        if (wallet.provider === 'dynamic') {
+          const simulation = await publicClient.simulateContract({
+            account: wallet.address,
+            ...request,
+          });
+          const txHash = await signAndSendPreparedTransaction(wallet, simulation.request);
+          return {
+            onchainCampaignId: simulation.result,
+            txHash,
+          };
+        }
+
+        const account = localAccount(wallet);
+        const walletClient = createWalletClient({ account, chain, transport });
+        const simulation = await publicClient.simulateContract({
+          account,
+          ...request,
         });
         const txHash = await walletClient.writeContract(simulation.request);
 
@@ -137,6 +259,25 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       });
     },
   };
+
+  async function signAndSendContract(wallet: DevWallet, request: Parameters<typeof publicClient.simulateContract>[0]): Promise<`0x${string}`> {
+    const simulation = await publicClient.simulateContract({
+      account: wallet.address,
+      ...request,
+    });
+    return signAndSendPreparedTransaction(wallet, simulation.request);
+  }
+
+  async function signAndSendPreparedTransaction(wallet: DevWallet, transaction: unknown): Promise<`0x${string}`> {
+    const authenticatedClient = await authenticatedDynamicClient(config);
+    const serializedTransaction = await authenticatedClient.signTransaction({
+      senderAddress: wallet.address,
+      transaction: transaction as never,
+    });
+    return rawSender.sendRawTransaction({
+      serializedTransaction: serializedTransaction as `0x${string}`,
+    });
+  }
 
   async function withGasTopUp<T>(wallet: DevWallet, action: () => Promise<T>): Promise<T> {
     await ensureGas(wallet.address);
@@ -171,8 +312,56 @@ export function formatDevUsdcAmount(value: bigint): string {
   return formatUnits(value, 6);
 }
 
+export function formatDevTokenAmount(value: bigint, decimals: number): string {
+  return formatUnits(value, decimals);
+}
+
+async function authenticatedDynamicClient(config: AppConfig) {
+  if (!config.dynamicAuthToken || !config.dynamicEnvironmentId) {
+    throw new Error('DYNAMIC_AUTH_TOKEN and DYNAMIC_ENV_ID are required for Dynamic wallets');
+  }
+
+  const client = new DynamicEvmWalletClient({
+    environmentId: config.dynamicEnvironmentId,
+    baseApiUrl: 'https://app.dynamicauth.com',
+    baseMPCRelayApiUrl: 'relay.dynamicauth.com',
+  });
+
+  await client.authenticateApiToken(config.dynamicAuthToken);
+  return client;
+}
+
+function isDynamicConfigured(config: AppConfig): boolean {
+  return Boolean(config.dynamicAuthToken && config.dynamicEnvironmentId);
+}
+
+function configuredMajorTokens(config: AppConfig) {
+  return [
+    { symbol: 'USDC', address: config.usdcTokenAddress, decimals: 6 },
+    { symbol: 'USDT', address: config.usdtTokenAddress, decimals: 6 },
+    { symbol: 'DAI', address: config.daiTokenAddress, decimals: 18 },
+    { symbol: 'WBTC', address: config.wbtcTokenAddress, decimals: 8 },
+  ]
+    .filter((token) => /^0x[a-fA-F0-9]{40}$/.test(token.address))
+    .map((token) => ({
+      ...token,
+      address: token.address as `0x${string}`,
+    }));
+}
+
+function localAccount(wallet: DevWallet) {
+  if (!wallet.privateKey) throw new Error('Local wallet private key is missing');
+  return privateKeyToAccount(wallet.privateKey);
+}
+
 function assertConfigured(config: AppConfig): void {
   if (!config.escrowContractAddress || !config.usdcTokenAddress || !config.rpcUrl) {
     throw new Error('RPC_URL, ESCROW_CONTRACT_ADDRESS, and USDC_TOKEN_ADDRESS are required for dev wallet mode');
+  }
+}
+
+function assertRpcConfigured(config: AppConfig): void {
+  if (!config.rpcUrl) {
+    throw new Error('RPC_URL is required for wallet balance lookup');
   }
 }

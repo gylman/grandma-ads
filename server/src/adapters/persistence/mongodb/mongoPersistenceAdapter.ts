@@ -378,7 +378,9 @@ function createModels(connection: Connection) {
     {
       telegramUserId: { type: String, required: true, unique: true },
       address: { type: String, required: true },
-      privateKey: { type: String, required: true },
+      provider: { type: String, enum: ['local', 'dynamic'], required: true, default: 'local' },
+      privateKey: { type: String, default: null },
+      walletId: { type: String, default: null },
       createdAt: { type: Date, required: true },
     },
     { versionKey: false },
@@ -458,7 +460,9 @@ function toDevWallet(wallet: DevWallet): DevWallet {
   return {
     telegramUserId: wallet.telegramUserId,
     address: wallet.address,
-    privateKey: wallet.privateKey,
+    provider: wallet.provider ?? 'local',
+    privateKey: wallet.privateKey ?? null,
+    walletId: wallet.walletId ?? null,
     createdAt: wallet.createdAt,
   };
 }

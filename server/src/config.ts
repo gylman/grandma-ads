@@ -11,12 +11,17 @@ export type AppConfig = {
   chainId: number;
   escrowContractAddress: string;
   usdcTokenAddress: string;
+  usdtTokenAddress: string;
+  daiTokenAddress: string;
+  wbtcTokenAddress: string;
   verifierPrivateKey: string;
   telegramBotToken: string;
   telegramBotMode: 'off' | 'polling';
   custodialDevMode: boolean;
   devWalletMinterPrivateKey: string;
   devWalletEthTopUpAmount: bigint;
+  dynamicEnvironmentId: string;
+  dynamicAuthToken: string;
   openaiApiKey: string;
   openaiModel: string;
 };
@@ -32,12 +37,17 @@ export const config: AppConfig = {
   chainId: Number(process.env.CHAIN_ID ?? 31337),
   escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS ?? '',
   usdcTokenAddress: process.env.USDC_TOKEN_ADDRESS ?? '',
+  usdtTokenAddress: process.env.USDT_TOKEN_ADDRESS ?? '',
+  daiTokenAddress: process.env.DAI_TOKEN_ADDRESS ?? '',
+  wbtcTokenAddress: process.env.WBTC_TOKEN_ADDRESS ?? '',
   verifierPrivateKey: process.env.VERIFIER_PRIVATE_KEY ?? '',
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
   telegramBotMode: parseTelegramBotMode(process.env.TELEGRAM_BOT_MODE, process.env.TELEGRAM_BOT_TOKEN),
   custodialDevMode: process.env.CUSTODIAL_DEV_MODE === 'true',
   devWalletMinterPrivateKey: process.env.DEV_WALLET_MINTER_PRIVATE_KEY ?? process.env.DEPLOYER_PRIVATE_KEY ?? '',
   devWalletEthTopUpAmount: parseEthAmount(process.env.DEV_WALLET_ETH_TOP_UP_AMOUNT ?? '0.05'),
+  dynamicEnvironmentId: process.env.DYNAMIC_ENV_ID ?? process.env.ENV_ID ?? '',
+  dynamicAuthToken: process.env.DYNAMIC_AUTH_TOKEN ?? process.env.AUTH_TOKEN ?? '',
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
 };

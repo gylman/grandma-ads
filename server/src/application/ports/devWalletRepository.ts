@@ -1,7 +1,9 @@
 export type DevWallet = {
   telegramUserId: string;
   address: `0x${string}`;
-  privateKey: `0x${string}`;
+  provider: 'local' | 'dynamic';
+  privateKey: `0x${string}` | null;
+  walletId: string | null;
   createdAt: Date;
 };
 

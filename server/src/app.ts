@@ -17,7 +17,13 @@ export async function createRuntime() {
   const agent = createAgentGateway(config);
   const blockchain = createViemBlockchainGateway(config);
   const devWalletGateway = createViemDevWalletGateway(config);
-  const useCases = createAppUseCases({ ...persistence.repositories, agent, blockchain, devWalletGateway });
+  const useCases = createAppUseCases({
+    ...persistence.repositories,
+    agent,
+    blockchain,
+    devWalletGateway,
+    tokenDecimalsByAddress: createTokenDecimalsByAddress(),
+  });
 
   const app = express();
   app.use((req, res, next) => {
@@ -53,4 +59,20 @@ export async function createRuntime() {
       await persistence.close();
     },
   };
+}
+
+function createTokenDecimalsByAddress(): Record<string, number> {
+  const tokens: Array<{ address: string; decimals: number }> = [
+    { address: config.usdcTokenAddress, decimals: 6 },
+    { address: config.usdtTokenAddress, decimals: 6 },
+    { address: config.daiTokenAddress, decimals: 18 },
+    { address: config.wbtcTokenAddress, decimals: 8 },
+  ];
+
+  return tokens.reduce<Record<string, number>>((acc, token) => {
+    if (/^0x[a-fA-F0-9]{40}$/.test(token.address)) {
+      acc[token.address.toLowerCase()] = token.decimals;
+    }
+    return acc;
+  }, {});
 }

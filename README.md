@@ -16,15 +16,14 @@ Implemented:
 - viem blockchain gateway on the server.
 - OpenAI-backed agent gateway with deterministic fallback.
 - React client dashboard with wagmi wallet interactions.
-- Basic channel registration, campaign draft creation, content safety checks, and post verification primitives.
+- Telegram long-polling bot for onboarding, channel registration, campaign drafting, funding, offer negotiation, and accepted-channel posting.
+- Dev-only server wallets backed by Dynamic when configured, with local private-key fallback for Anvil.
 
 Not implemented yet:
 
 - Production-hardened database schema and migrations.
-- Real Telegram post fetching/scraping.
 - Scheduled random/final checks.
 - Production wallet signature auth.
-- Full offer/accept/reject/counter flow.
 - Full automated campaign monitoring and settlement jobs.
 
 ## Repo Layout
@@ -315,6 +314,22 @@ DEV_WALLET_MINTER_PRIVATE_KEY=0x...
 DEV_WALLET_ETH_TOP_UP_AMOUNT=0.05
 ```
 
+If Dynamic is configured, `/dev_create_wallet` creates a Dynamic server wallet instead of a raw local private-key wallet:
+
+```txt
+DYNAMIC_ENV_ID=
+DYNAMIC_AUTH_TOKEN=
+```
+
+The server also accepts the starter repo variable names as aliases:
+
+```txt
+ENV_ID=
+AUTH_TOKEN=
+```
+
+If those Dynamic values are empty, the server falls back to a generated local Anvil private key.
+
 `DEV_WALLET_MINTER_PRIVATE_KEY` must be the owner of the local `MockUSDC` contract if you want `/dev_mint` to work. In local Anvil, this is usually the same key that deployed `MockUSDC`.
 
 The same key also tops up generated dev wallets with a small amount of local ETH so they can pay gas for approve/deposit/withdraw transactions.
@@ -322,20 +337,34 @@ The same key also tops up generated dev wallets with a small amount of local ETH
 Dev bot commands:
 
 ```txt
-/dev_wallet
+/dev_create_wallet
 /dev_balance
 /dev_mint 1000
 /dev_deposit 100
 /dev_withdraw 25
+/sign hello
 ```
 
 What they do:
 
-- `/dev_wallet`: creates or shows the Telegram user's generated test wallet.
+- `/dev_create_wallet`: creates or shows the Telegram user's generated test wallet.
 - `/dev_mint 1000`: mints 1,000 mock USDC to that generated wallet.
 - `/dev_deposit 100`: approves escrow and deposits 100 mock USDC.
 - `/dev_withdraw 25`: withdraws 25 mock USDC from escrow.
-- `/dev_balance`: shows wallet token balance and available escrow balance.
+- `/dev_balance`: shows native ETH plus configured non-zero token balances and available escrow balances.
+- `/sign hello`: signs a message with the dev wallet.
+
+The bot checks these configured major tokens:
+
+```txt
+ETH native
+USDC
+USDT
+DAI
+WBTC
+```
+
+For ERC-20 balances, set the token addresses in `server/.env`. After a user starts the bot or checks `/dev_balance`, the server watches that wallet during the current process and sends a Telegram message if the visible balance changes.
 
 ## Client
 
@@ -470,10 +499,15 @@ RPC_URL=http://127.0.0.1:8545
 CHAIN_ID=31337
 ESCROW_CONTRACT_ADDRESS=
 USDC_TOKEN_ADDRESS=
+USDT_TOKEN_ADDRESS=
+DAI_TOKEN_ADDRESS=
+WBTC_TOKEN_ADDRESS=
 VERIFIER_PRIVATE_KEY=
 CUSTODIAL_DEV_MODE=false
 DEV_WALLET_MINTER_PRIVATE_KEY=
 DEV_WALLET_ETH_TOP_UP_AMOUNT=0.05
+DYNAMIC_ENV_ID=
+DYNAMIC_AUTH_TOKEN=
 TELEGRAM_BOT_MODE=polling
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
@@ -523,9 +557,12 @@ In dev custodial mode, the bot can now run the first agentic campaign loop:
 /new_campaign
 /campaign_draft Promote Grandma Ads on @openagents2026 for 100 USDC for 24 hours. Caption: Sponsored posts with escrow.
 /revise_copy <campaignId> make it shorter and more direct
-/fund_campaign <campaignId>
 /send_offer <campaignId>
 ```
+
+`/send_offer` locks the campaign funds from the advertiser's escrow balance and then sends the offer to the poster. `/fund_campaign` still exists as a lower-level dev command if you only want to lock funds without messaging the poster yet.
+
+When `/send_offer` runs, the bot also signs a human-readable authorization message with the dev wallet. This is the dev-stage gasless pattern: the user sees plain text describing the action instead of a raw transaction object.
 
 The poster then uses:
 
@@ -534,6 +571,17 @@ The poster then uses:
 /reject <campaignId>
 /counter <campaignId> 150 USDC for 24h
 ```
+
+The poster can also reply directly to the offer message:
+
+```txt
+accept
+reject
+150 USDC for 24h
+same price but 12h
+```
+
+Ad copy is sent as its own Telegram message so it is easier to copy from the mobile app.
 
 When the poster accepts, the bot posts the approved ad text into the verified channel automatically. The bot must be an admin in that channel with permission to post messages.
 

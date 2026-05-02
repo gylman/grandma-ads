@@ -1,18 +1,31 @@
 import express, { Express } from 'express';
 import { createHttpRouter } from './adapters/http/routes';
+import { createAgentGateway } from './adapters/agent/createAgentGateway';
+import { createViemDevWalletGateway } from './adapters/blockchain/viem/devWalletGateway';
 import { createViemBlockchainGateway } from './adapters/blockchain/viem/viemBlockchainGateway';
-import { createInMemoryRepositories } from './adapters/persistence/inMemoryRepositories';
+import { createPersistenceAdapter } from './adapters/persistence/createPersistenceAdapter';
 import { config } from './config';
 import { createAppUseCases } from './application/useCases/createAppUseCases';
 
-export function createApp(): Express {
-  return createRuntime().app;
+export async function createApp(): Promise<Express> {
+  const runtime = await createRuntime();
+  return runtime.app;
 }
 
-export function createRuntime() {
-  const repositories = createInMemoryRepositories();
+export async function createRuntime() {
+  const persistence = await createPersistenceAdapter(config);
+  const agent = createAgentGateway(config);
   const blockchain = createViemBlockchainGateway(config);
-  const useCases = createAppUseCases({ ...repositories, blockchain });
+  const devWalletGateway = createViemDevWalletGateway(config);
+  const useCases = createAppUseCases({
+    ...persistence.repositories,
+    agent,
+    blockchain,
+    devWalletGateway,
+    tokenDecimalsByAddress: createTokenDecimalsByAddress(),
+    escrowContractAddress: config.escrowContractAddress as `0x${string}`,
+    chainId: config.chainId,
+  });
 
   const app = express();
   app.use((req, res, next) => {
@@ -41,5 +54,27 @@ export function createRuntime() {
     res.json({ message: 'Grandma Ads server', health: '/health' });
   });
 
-  return { app, useCases };
+  return {
+    app,
+    useCases,
+    async close() {
+      await persistence.close();
+    },
+  };
+}
+
+function createTokenDecimalsByAddress(): Record<string, number> {
+  const tokens: Array<{ address: string; decimals: number }> = [
+    { address: config.usdcTokenAddress, decimals: 6 },
+    { address: config.usdtTokenAddress, decimals: 6 },
+    { address: config.daiTokenAddress, decimals: 18 },
+    { address: config.wbtcTokenAddress, decimals: 8 },
+  ];
+
+  return tokens.reduce<Record<string, number>>((acc, token) => {
+    if (/^0x[a-fA-F0-9]{40}$/.test(token.address)) {
+      acc[token.address.toLowerCase()] = token.decimals;
+    }
+    return acc;
+  }, {});
 }

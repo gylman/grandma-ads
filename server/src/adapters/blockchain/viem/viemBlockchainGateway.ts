@@ -2,8 +2,24 @@ import { createPublicClient, createWalletClient, http, isAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { foundry } from 'viem/chains';
 import { AppConfig } from '../../../config';
-import { BalanceSnapshot, BlockchainGateway, CreateOnchainCampaignInput } from '../../../application/ports/blockchainGateway';
+import {
+  BalanceSnapshot,
+  BlockchainGateway,
+  CreateOnchainCampaignBySigInput,
+  CreateOnchainCampaignInput,
+  DepositWithPermitInput,
+} from '../../../application/ports/blockchainGateway';
 import { adEscrowAbi } from './adEscrowAbi';
+
+const mockUsdcPermitAbi = [
+  {
+    type: 'function',
+    name: 'nonces',
+    stateMutability: 'view',
+    inputs: [{ name: 'owner', type: 'address' }],
+    outputs: [{ name: 'nonce', type: 'uint256' }],
+  },
+] as const;
 
 export function createViemBlockchainGateway(config: AppConfig): BlockchainGateway {
   const chain = {
@@ -61,6 +77,41 @@ export function createViemBlockchainGateway(config: AppConfig): BlockchainGatewa
       };
     },
 
+    async getCampaignNonce(walletAddress: `0x${string}`): Promise<bigint> {
+      if (!config.escrowContractAddress) {
+        throw new Error('Escrow contract is not configured');
+      }
+
+      return publicClient.readContract({
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'nonces',
+        args: [walletAddress],
+      });
+    },
+
+    async getTokenPermitNonce(tokenAddress: `0x${string}`, walletAddress: `0x${string}`): Promise<bigint> {
+      return publicClient.readContract({
+        address: tokenAddress,
+        abi: mockUsdcPermitAbi,
+        functionName: 'nonces',
+        args: [walletAddress],
+      });
+    },
+
+    async depositWithPermit(input: DepositWithPermitInput) {
+      const writer = getWalletClient();
+      const simulation = await publicClient.simulateContract({
+        account,
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'depositWithPermit',
+        args: [input.ownerWalletAddress, input.tokenAddress, input.amount, input.deadline, input.signature],
+      });
+
+      return writer.writeContract(simulation.request);
+    },
+
     createCampaignFromBalance(input: CreateOnchainCampaignInput) {
       const writer = getWalletClient();
       return writer.writeContract({
@@ -69,6 +120,31 @@ export function createViemBlockchainGateway(config: AppConfig): BlockchainGatewa
         functionName: 'createCampaignFromBalance',
         args: [input.posterWalletAddress, input.tokenAddress, input.amount, input.durationSeconds],
       });
+    },
+
+    async createCampaignFromBalanceBySig(input: CreateOnchainCampaignBySigInput) {
+      const writer = getWalletClient();
+      const simulation = await publicClient.simulateContract({
+        account,
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'createCampaignFromBalanceBySig',
+        args: [
+          input.advertiserWalletAddress,
+          input.posterWalletAddress,
+          input.tokenAddress,
+          input.amount,
+          input.durationSeconds,
+          input.deadline,
+          input.signature,
+        ],
+      });
+
+      const txHash = await writer.writeContract(simulation.request);
+      return {
+        onchainCampaignId: simulation.result,
+        txHash,
+      };
     },
 
     startCampaign(campaignId: bigint) {

@@ -12,19 +12,19 @@ Implemented:
 
 - Foundry escrow contract with virtual balances and campaign settlement.
 - Server API with hexagonal architecture.
-- In-memory repositories for users, channels, campaigns, and verification checks.
+- Repository ports with pluggable persistence adapters (`inmemory` and MongoDB through Mongoose).
 - viem blockchain gateway on the server.
+- OpenAI-backed agent gateway with deterministic fallback.
 - React client dashboard with wagmi wallet interactions.
-- Basic channel registration, campaign draft creation, content safety checks, and post verification primitives.
+- Telegram long-polling bot for onboarding, channel registration, campaign drafting, funding, offer negotiation, and accepted-channel posting.
+- Dev-only server wallets backed by Dynamic when configured, with local private-key fallback for Anvil.
 
 Not implemented yet:
 
-- Real database.
-- Real Telegram post fetching/scraping.
+- Production-hardened database schema and migrations.
 - Scheduled random/final checks.
 - Production wallet signature auth.
-- Full offer/accept/reject/counter flow.
-- OpenAI-backed agent integration.
+- Full automated campaign monitoring and settlement jobs.
 
 ## Repo Layout
 
@@ -228,7 +228,7 @@ server/src/adapters/
 External adapters:
 
 - `http/` Express routes
-- `persistence/` in-memory repositories
+- `persistence/` in-memory and Mongoose-backed MongoDB repository adapters
 - `blockchain/viem/` viem escrow gateway
 - `telegram/` Telegram long-polling bot adapter
 
@@ -299,6 +299,72 @@ The bot currently handles a small command set:
 ```
 
 Webhook support can be added later for production. For now, leave `TELEGRAM_BOT_MODE=polling` locally.
+
+### Dev Custodial Wallet Mode
+
+For local development only, the bot can generate a test wallet for each Telegram user and sign local Anvil transactions from the server. This is useful for exercising the full bot/server/chain lifecycle before the production wallet handoff is finished.
+
+Do not use this mode with real user keys or real funds.
+
+Enable it in `server/.env`:
+
+```txt
+CUSTODIAL_DEV_MODE=true
+DEV_WALLET_MINTER_PRIVATE_KEY=0x...
+DEV_WALLET_ETH_TOP_UP_AMOUNT=0.05
+```
+
+If Dynamic is configured, `/dev_create_wallet` creates a Dynamic server wallet instead of a raw local private-key wallet:
+
+```txt
+DYNAMIC_ENV_ID=
+DYNAMIC_AUTH_TOKEN=
+```
+
+The server also accepts the starter repo variable names as aliases:
+
+```txt
+ENV_ID=
+AUTH_TOKEN=
+```
+
+If those Dynamic values are empty, the server falls back to a generated local Anvil private key.
+
+`DEV_WALLET_MINTER_PRIVATE_KEY` must be the owner of the local `MockUSDC` contract if you want `/dev_mint` to work. In local Anvil, this is usually the same key that deployed `MockUSDC`.
+
+The same key also tops up generated dev wallets with a small amount of local ETH so they can pay gas for approve/deposit/withdraw transactions.
+
+Dev bot commands:
+
+```txt
+/dev_create_wallet
+/dev_balance
+/dev_mint 1000
+/dev_deposit 100
+/dev_withdraw 25
+/sign hello
+```
+
+What they do:
+
+- `/dev_create_wallet`: creates or shows the Telegram user's generated test wallet.
+- `/dev_mint 1000`: mints 1,000 mock USDC to that generated wallet.
+- `/dev_deposit 100`: approves escrow and deposits 100 mock USDC.
+- `/dev_withdraw 25`: withdraws 25 mock USDC from escrow.
+- `/dev_balance`: shows native ETH plus configured non-zero token balances and available escrow balances.
+- `/sign hello`: signs a message with the dev wallet.
+
+The bot checks these configured major tokens:
+
+```txt
+ETH native
+USDC
+USDT
+DAI
+WBTC
+```
+
+For ERC-20 balances, set the token addresses in `server/.env`. After a user starts the bot or checks `/dev_balance`, the server watches that wallet during the current process and sends a Telegram message if the visible balance changes.
 
 ## Client
 
@@ -426,16 +492,27 @@ Server:
 PORT=3001
 CLIENT_URL=http://localhost:5173
 SERVER_URL=http://localhost:3001
+PERSISTENCE_MODE=inmemory
+DATABASE_URL=mongodb://127.0.0.1:27017
+DATABASE_NAME=grandma_ads
 RPC_URL=http://127.0.0.1:8545
 CHAIN_ID=31337
 ESCROW_CONTRACT_ADDRESS=
 USDC_TOKEN_ADDRESS=
+USDT_TOKEN_ADDRESS=
+DAI_TOKEN_ADDRESS=
+WBTC_TOKEN_ADDRESS=
 VERIFIER_PRIVATE_KEY=
+CUSTODIAL_DEV_MODE=false
+DEV_WALLET_MINTER_PRIVATE_KEY=
+DEV_WALLET_ETH_TOP_UP_AMOUNT=0.05
+DYNAMIC_ENV_ID=
+DYNAMIC_AUTH_TOKEN=
 TELEGRAM_BOT_MODE=polling
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
-DATABASE_URL=
 OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 Client:
@@ -472,13 +549,72 @@ POST /api/campaigns/:id/offer-preview
 POST /api/campaigns/:id/submit-post
 ```
 
+## Bot Campaign Flow
+
+In dev custodial mode, the bot can now run the first agentic campaign loop:
+
+```txt
+/new_campaign
+/campaign_draft Promote Grandma Ads on @openagents2026 for 100 USDC for 24 hours. Caption: Sponsored posts with escrow.
+/revise_copy <campaignId> make it shorter and more direct
+/send_offer <campaignId>
+```
+
+`/send_offer` locks the campaign funds from the advertiser's escrow balance and then sends the offer to the poster. `/fund_campaign` still exists as a lower-level dev command if you only want to lock funds without messaging the poster yet.
+
+When `/send_offer` runs, the bot also signs a human-readable authorization message with the dev wallet. This is the dev-stage gasless pattern: the user sees plain text describing the action instead of a raw transaction object.
+
+The poster then uses:
+
+```txt
+/accept <campaignId>
+/reject <campaignId>
+/counter <campaignId> 150 USDC for 24h
+```
+
+The poster can also reply directly to the offer message:
+
+```txt
+accept
+reject
+150 USDC for 24h
+same price but 12h
+```
+
+Ad copy is sent as its own Telegram message so it is easier to copy from the mobile app.
+
+When the poster accepts, the bot posts the approved ad text into the verified channel automatically. The bot must be an admin in that channel with permission to post messages.
+
+The bot also listens for channel post updates:
+
+```txt
+channel_post
+edited_channel_post
+```
+
+Most channel events are ignored. The server only acts when the channel username and message id match a campaign post that it already knows about. If an active campaign post is edited and no longer matches the approved copy, the server refunds the campaign on-chain when possible and marks it failed/refunded.
+
+If a poster counters, the advertiser can use:
+
+```txt
+/accept_counter <campaignId> <amount> <duration>
+```
+
+Example:
+
+```txt
+/accept_counter cmp_1 150 24h
+```
+
+`OPENAI_API_KEY` enables OpenAI-backed campaign intake, safety notes, ad copy suggestions, offer wording, and counteroffer summaries. Without it, the server falls back to deterministic local helpers.
+
 ## Architecture Notes
 
 The server is organized so core product logic does not depend on Express, viem, or the database implementation.
 
 Direction:
 
-- Replace in-memory repositories with a real database adapter later.
+- Keep repository ports stable while switching adapters (`inmemory` or `mongodb`).
 - Keep viem isolated behind `BlockchainGateway`.
 - Expand the Telegram adapter from simple long polling commands into the full offer/channel/campaign flow.
 - Add OpenAI/agent calls as application services or outbound ports.

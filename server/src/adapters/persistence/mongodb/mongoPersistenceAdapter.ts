@@ -278,6 +278,10 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           };
 
           await models.VerificationCheck.create(check);
+          if (input.type === 'FINAL') {
+            return { check, result };
+          }
+
           await models.Campaign.replaceOne({ id: domainCampaign.id }, updatedCampaign);
 
           return { check, result };

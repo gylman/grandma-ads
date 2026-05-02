@@ -399,6 +399,12 @@ export function createAppUseCases(dependencies: {
       return campaigns.findBySubmittedPost(channelUsername, messageId, ['ACTIVE', 'COMPLETED', 'FAILED', 'REFUNDED']);
     },
 
+    async listFinalizableCampaigns(now = new Date()) {
+      return (await campaigns.list()).filter((campaign) => {
+        return campaign.status === 'ACTIVE' && campaign.endsAt !== null && campaign.endsAt.getTime() <= now.getTime();
+      });
+    },
+
     async advanceCampaign(campaignId: string, status: CampaignStatus) {
       return campaigns.advance(campaignId, status);
     },
@@ -555,6 +561,51 @@ export function createAppUseCases(dependencies: {
 
     async submitPostForVerification(input: SubmitPostInput) {
       return campaigns.submitPostForVerification(input);
+    },
+
+    async finalizeCampaignAtEnd(input: {
+      campaignId: string;
+      observedText?: string | null;
+      observedImageHash?: string | null;
+      now?: Date;
+    }) {
+      const now = input.now ?? new Date();
+      const campaign = await campaigns.findById(input.campaignId);
+      if (!campaign) throw new Error('Campaign not found');
+      if (campaign.status !== 'ACTIVE') throw new Error('Campaign is not active.');
+      if (!campaign.endsAt || campaign.endsAt.getTime() > now.getTime()) throw new Error('Campaign has not reached its final check time yet.');
+      if (!campaign.submittedPostUrl) throw new Error('Campaign does not have a submitted post URL.');
+
+      const output = await campaigns.submitPostForVerification({
+        campaignId: campaign.id,
+        submittedPostUrl: campaign.submittedPostUrl,
+        observedText: input.observedText,
+        observedImageHash: input.observedImageHash,
+        type: 'FINAL',
+      });
+
+      let txHash: `0x${string}` | null = null;
+      let updated = await campaigns.findById(campaign.id);
+      if (!updated) throw new Error('Campaign not found after final check.');
+
+      if (output.check.status === 'PASSED') {
+        if (updated.onchainCampaignId) {
+          txHash = await blockchain.completeCampaign(BigInt(updated.onchainCampaignId));
+        }
+        updated = await campaigns.advance(updated.id, 'COMPLETED');
+        updated = await appendCampaignEnsEvent(updated.id, 'COMPLETED', txHash);
+        return { campaign: updated, check: output.check, result: output.result, settlement: 'COMPLETED' as const, txHash };
+      }
+
+      if (updated.onchainCampaignId) {
+        txHash = await blockchain.refundCampaign(BigInt(updated.onchainCampaignId));
+        updated = await campaigns.advance(updated.id, 'REFUNDED');
+        updated = await appendCampaignEnsEvent(updated.id, 'REFUNDED', txHash);
+        return { campaign: updated, check: output.check, result: output.result, settlement: 'REFUNDED' as const, txHash };
+      }
+
+      updated = await campaigns.advance(updated.id, 'FAILED');
+      return { campaign: updated, check: output.check, result: output.result, settlement: 'FAILED' as const, txHash };
     },
 
     async submitCampaignPostUrlFromPoster(input: {

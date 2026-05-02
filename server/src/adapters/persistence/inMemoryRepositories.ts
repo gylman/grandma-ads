@@ -233,6 +233,10 @@ export function createInMemoryRepositories(): {
         };
 
         verificationChecks.set(check.id, check);
+        if (input.type === 'FINAL') {
+          return { check, result };
+        }
+
         campaigns.set(campaign.id, {
           ...campaign,
           submittedPostUrl: input.submittedPostUrl,

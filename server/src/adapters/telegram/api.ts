@@ -26,6 +26,7 @@ export function createTelegramApi(botToken: string) {
     options?: {
       replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup;
       replyToMessageId?: number;
+      parseMode?: "HTML" | "MarkdownV2";
     },
   ): Promise<TelegramMessage> {
     return await request<TelegramMessage>("sendMessage", {
@@ -34,6 +35,7 @@ export function createTelegramApi(botToken: string) {
       disable_web_page_preview: true,
       reply_markup: options?.replyMarkup,
       reply_to_message_id: options?.replyToMessageId,
+      parse_mode: options?.parseMode,
     });
   }
 

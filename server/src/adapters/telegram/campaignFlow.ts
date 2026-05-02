@@ -6,6 +6,7 @@ import { formatCampaignSummary, formatDuration } from "./formatters";
 import { pendingAdvertiserUserId, pendingAdvertiserWalletAddress } from "./identity";
 import { counterDraftActionButtons, counterResponseActionButtons, offerActionButtons } from "./keyboards";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
+import { escapeHtml, highlightNegotiationTerms } from "./richText";
 import { campaignIdFromReply, counterProposalKey, rememberCampaignMessage } from "./state";
 import { parseDuration, parseTokenAmountForButton, resolveRequestedToken } from "./tokenUtils";
 import { TelegramInlineKeyboardButton, TelegramMessage, TelegramReplyMarkup } from "./types";
@@ -258,8 +259,8 @@ export async function counterCampaign(
 
   await ctx.api.sendMessage(
     chatId,
-    ["Here is your counteroffer draft:", "", result.suggestion.reply, "", "Review it, then send or revise."].join("\n"),
-    { replyMarkup: counterDraftActionButtons(updatedCampaign.id) },
+    ["<b>Counteroffer Draft</b>", "", highlightNegotiationTerms(result.suggestion.reply), "", "Review it, then send or revise."].join("\n"),
+    { replyMarkup: counterDraftActionButtons(updatedCampaign.id), parseMode: "HTML" },
   );
 }
 
@@ -274,8 +275,8 @@ export async function sendPreparedCounterCampaign(ctx: TelegramBotContext, chatI
   const recipientChatId = draft.recipientTelegramUserId;
   await ctx.api.sendMessage(
     recipientChatId,
-    [`Counteroffer for ${campaign.id}:`, "", draft.suggestionReply].join("\n"),
-    { replyMarkup: counterResponseActionButtons(campaign.id) },
+    [`<b>Counteroffer</b> for <code>${escapeHtml(campaign.id)}</code>:`, "", highlightNegotiationTerms(draft.suggestionReply)].join("\n"),
+    { replyMarkup: counterResponseActionButtons(campaign.id), parseMode: "HTML" },
   );
 
   ctx.state.pendingCounterProposalByChatCampaign.set(counterProposalKey(recipientChatId, campaign.id), {
@@ -424,13 +425,16 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
   const offerMessage = await ctx.api.sendMessage(
     Number(poster.telegramUserId),
     [
-      `Offer for ${campaign.targetTelegramChannelUsername ?? "this channel"}:`,
+      `<b>Offer for ${escapeHtml(campaign.targetTelegramChannelUsername ?? "this channel")}</b>`,
       "",
-      `Receive ${campaign.amount} tokens to publish the approved sponsored post and keep it live for ${formatDuration(campaign.durationSeconds)}.`,
+      `<b>Amount:</b> ${escapeHtml(campaign.amount)}`,
+      `<b>Duration:</b> ${escapeHtml(formatDuration(campaign.durationSeconds))}`,
+      `<b>Rule:</b> Publish the approved copy exactly and keep it live for the full duration.`,
       "Payment condition: payment is made only after the post is verified to match the approved content and remain live for the required duration.",
       "",
       "Approved ad copy is in the next message so it is easy to copy on mobile.",
     ].join("\n"),
+    { parseMode: "HTML" },
   );
   rememberCampaignMessage(ctx.state, Number(poster.telegramUserId), offerMessage, campaign.id, "OFFER");
   if (campaign.approvedText) {

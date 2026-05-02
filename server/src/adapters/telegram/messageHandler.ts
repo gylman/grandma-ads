@@ -108,8 +108,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
   }
 
   if (text.startsWith("/start")) {
-    await ctx.api.sendMessage(chatId, "Choose an action below, or reply to the campaign prompt.", { replyMarkup: mainMenuButtons() });
-    await promptCampaignDraft(ctx, chatId);
+    await ctx.api.sendMessage(chatId, "Choose an action below.", { replyMarkup: mainMenuButtons() });
     return;
   }
 

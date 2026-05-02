@@ -2,6 +2,7 @@ import { formatDevUsdcAmount } from "../blockchain/viem/devWalletGateway";
 import { TelegramBotContext, sendPromptForReply } from "./context";
 import { balanceSignature, formatMajorBalances, friendlyBalanceLookupError } from "./formatters";
 import { checkBalanceButton, devWalletButtons } from "./keyboards";
+import { escapeHtml } from "./richText";
 import { parseUsdcAmountInput } from "./tokenUtils";
 
 export async function sendDevWalletOverview(ctx: TelegramBotContext, chatId: number, telegramUserId: string): Promise<boolean> {
@@ -89,7 +90,9 @@ export async function promptWithdraw(ctx: TelegramBotContext, chatId: number): P
 
 export async function createDevWallet(ctx: TelegramBotContext, chatId: number, telegramUserId: string): Promise<void> {
   const wallet = await ctx.useCases.ensureDevWallet(telegramUserId);
-  await ctx.api.sendMessage(chatId, `Dev wallet:\n${wallet.address}\n\nProvider: ${wallet.provider}`);
+  await ctx.api.sendMessage(chatId, `<b>Wallet Created</b>\n\n<b>Address:</b> <code>${escapeHtml(wallet.address)}</code>\n<b>Provider:</b> ${escapeHtml(wallet.provider)}`, {
+    parseMode: "HTML",
+  });
   await sendDevWalletOverview(ctx, chatId, telegramUserId);
   await ctx.api.sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
 }
@@ -104,9 +107,14 @@ export async function sendDevBalanceWithActions(ctx: TelegramBotContext, chatId:
 export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
   const amount = parseUsdcAmountInput(rawAmount);
   const result = await ctx.useCases.mintDevWalletMockUsdc(telegramUserId, amount);
-  await ctx.api.sendMessage(chatId, `Minted ${formatDevUsdcAmount(amount)} mock USDC to ${result.wallet.address}.\nTx: ${result.txHash}`, {
-    replyMarkup: checkBalanceButton(),
-  });
+  await ctx.api.sendMessage(
+    chatId,
+    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevUsdcAmount(amount))} USDC\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n<b>Tx:</b> <code>${escapeHtml(result.txHash)}</code>`,
+    {
+      replyMarkup: checkBalanceButton(),
+      parseMode: "HTML",
+    },
+  );
 }
 
 export async function depositMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {

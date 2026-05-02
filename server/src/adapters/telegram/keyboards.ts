@@ -3,10 +3,10 @@ import { TelegramReplyMarkup } from "./types";
 export function mainMenuButtons(): TelegramReplyMarkup {
   return {
     inline_keyboard: [
-      [{ text: "New Campaign", callback_data: "menu:new_campaign" }],
+      [{ text: "Create Campaign", callback_data: "menu:new_campaign" }],
       [{ text: "Register Channel", callback_data: "menu:register_channel" }],
       [{ text: "My Campaigns", callback_data: "menu:my_campaigns" }],
-      [{ text: "Balance", callback_data: "menu:balance" }],
+      [{ text: "Wallet", callback_data: "menu:balance" }],
     ],
   };
 }
@@ -31,9 +31,9 @@ export function devWalletButtons(hasWallet: boolean): TelegramReplyMarkup {
 export function offerActionButtons(campaignId: string): TelegramReplyMarkup {
   return {
     inline_keyboard: [
-      [{ text: "Accept", callback_data: `offer:accept:${campaignId}` }],
-      [{ text: "Reject", callback_data: `offer:reject:${campaignId}` }],
-      [{ text: "Counter", callback_data: `offer:counter:${campaignId}` }],
+      [{ text: "Accept Offer", callback_data: `offer:accept:${campaignId}` }],
+      [{ text: "Reject Offer", callback_data: `offer:reject:${campaignId}` }],
+      [{ text: "Counter Offer", callback_data: `offer:counter:${campaignId}` }],
     ],
   };
 }
@@ -41,7 +41,7 @@ export function offerActionButtons(campaignId: string): TelegramReplyMarkup {
 export function counterDraftActionButtons(campaignId: string): TelegramReplyMarkup {
   return {
     inline_keyboard: [
-      [{ text: "Revise Counter", callback_data: `counter_draft:revise:${campaignId}` }],
+      [{ text: "Revise", callback_data: `counter_draft:revise:${campaignId}` }],
       [{ text: "Send Counter Offer", callback_data: `counter_draft:send:${campaignId}` }],
     ],
   };
@@ -50,9 +50,9 @@ export function counterDraftActionButtons(campaignId: string): TelegramReplyMark
 export function counterResponseActionButtons(campaignId: string): TelegramReplyMarkup {
   return {
     inline_keyboard: [
-      [{ text: "Accept", callback_data: `counter_response:accept:${campaignId}` }],
-      [{ text: "Reject", callback_data: `counter_response:reject:${campaignId}` }],
-      [{ text: "Counter", callback_data: `counter_response:counter:${campaignId}` }],
+      [{ text: "Accept Counter", callback_data: `counter_response:accept:${campaignId}` }],
+      [{ text: "Reject Counter", callback_data: `counter_response:reject:${campaignId}` }],
+      [{ text: "Counter Back", callback_data: `counter_response:counter:${campaignId}` }],
     ],
   };
 }

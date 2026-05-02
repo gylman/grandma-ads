@@ -40,8 +40,10 @@ export function createCampaign(input: {
   id: string;
   advertiserUserId: string;
   advertiserWalletAddress: string;
+  advertiserEnsName?: string | null;
   posterUserId?: string | null;
   posterWalletAddress?: string | null;
+  posterEnsName?: string | null;
   channelId?: string | null;
   tokenAddress: string;
   amount: string;
@@ -50,6 +52,8 @@ export function createCampaign(input: {
   requestedText?: string | null;
   requestedImageUrl?: string | null;
   requestedImageHash?: string | null;
+  ensName?: string | null;
+  ensLabel?: string | null;
   now?: Date;
 }): Campaign {
   const now = input.now ?? new Date();
@@ -59,8 +63,10 @@ export function createCampaign(input: {
     onchainCampaignId: null,
     advertiserUserId: input.advertiserUserId,
     advertiserWalletAddress: input.advertiserWalletAddress,
+    advertiserEnsName: input.advertiserEnsName ?? null,
     posterUserId: input.posterUserId ?? null,
     posterWalletAddress: input.posterWalletAddress ?? null,
+    posterEnsName: input.posterEnsName ?? null,
     channelId: input.channelId ?? null,
     targetTelegramChannelUsername: input.targetTelegramChannelUsername ?? null,
     targetTelegramChannelId: null,
@@ -75,6 +81,9 @@ export function createCampaign(input: {
     approvedImageHash: input.requestedImageHash ?? null,
     submittedPostUrl: null,
     submittedMessageId: null,
+    ensName: input.ensName ?? null,
+    ensLabel: input.ensLabel ?? null,
+    ensEvents: [],
     status: 'DRAFT',
     startsAt: null,
     endsAt: null,

@@ -6,6 +6,7 @@
     "build": "forge build",
     "deploy:local": "set -a; [ ! -f .env ] || . .env; set +a; forge script script/DeployLocal.s.sol:DeployLocal --rpc-url ${RPC_URL:-http://127.0.0.1:8545} --broadcast",
     "deploy:mock-usdc": "set -a; [ ! -f .env ] || . .env; set +a; forge script script/DeployMockUSDC.s.sol:DeployMockUSDC --rpc-url ${RPC_URL:-http://127.0.0.1:8545} --broadcast",
+    "deploy:ens-resolver": "set -a; [ ! -f .env ] || . .env; set +a; forge script script/DeployEthyAdsOffchainResolver.s.sol:DeployEthyAdsOffchainResolver --rpc-url ${RPC_URL:-http://127.0.0.1:8545} --broadcast",
     "deploy:sepolia": "set -a; [ ! -f .env ] || . .env; set +a; forge script script/DeploySepoliaEscrow.s.sol:DeploySepoliaEscrow --rpc-url $RPC_URL --broadcast --verify",
     "fmt": "forge fmt",
     "mint:mock-usdc": "node scripts/mintMockUsdc.mjs",

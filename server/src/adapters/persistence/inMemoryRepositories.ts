@@ -36,6 +36,7 @@ export function createInMemoryRepositories(): {
             ...existing,
             telegramUserId: input.telegramUserId ?? existing.telegramUserId,
             telegramUsername: input.telegramUsername ?? existing.telegramUsername,
+            ensName: input.ensName ?? existing.ensName,
             updatedAt: now,
           };
           users.set(updated.id, updated);
@@ -47,6 +48,7 @@ export function createInMemoryRepositories(): {
           walletAddress: input.walletAddress,
           telegramUserId: input.telegramUserId ?? null,
           telegramUsername: input.telegramUsername ?? null,
+          ensName: input.ensName ?? null,
           createdAt: now,
           updatedAt: now,
         };
@@ -58,12 +60,20 @@ export function createInMemoryRepositories(): {
         return [...users.values()].find((user) => user.walletAddress.toLowerCase() === walletAddress.toLowerCase()) ?? null;
       },
 
+      async list(): Promise<User[]> {
+        return [...users.values()];
+      },
+
       async findById(userId: string): Promise<User | null> {
         return users.get(userId) ?? null;
       },
 
       async findByTelegramUserId(telegramUserId: string): Promise<User | null> {
         return [...users.values()].find((user) => user.telegramUserId === telegramUserId) ?? null;
+      },
+
+      async findByEnsName(ensName: string): Promise<User | null> {
+        return [...users.values()].find((user) => user.ensName?.toLowerCase() === ensName.toLowerCase()) ?? null;
       },
 
       async deleteByTelegramUserId(telegramUserId: string): Promise<void> {
@@ -150,7 +160,7 @@ export function createInMemoryRepositories(): {
 
     campaigns: {
       async createDraft(input: CreateDraftCampaignInput): Promise<Campaign> {
-        const campaign = createCampaign({ ...input, id: id('cmp') });
+        const campaign = createCampaign({ ...input, id: input.id ?? id('cmp') });
         campaigns.set(campaign.id, campaign);
         return campaign;
       },

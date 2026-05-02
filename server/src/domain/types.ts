@@ -20,12 +20,24 @@ export type VerificationType = 'INITIAL' | 'RANDOM' | 'ADVERTISER_REQUESTED' | '
 export type VerificationStatus = 'PASSED' | 'FAILED';
 export type OfferRole = 'ADVERTISER' | 'POSTER' | 'AGENT';
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type CampaignEnsEventType = 'LOCKED' | 'STARTED' | 'COMPLETED' | 'REFUNDED' | 'VERIFIED';
+
+export type CampaignEnsEvent = {
+  name: string;
+  type: CampaignEnsEventType;
+  txHash: string | null;
+  agentEnsName: string;
+  onchainCampaignId: string | null;
+  textRecords: Record<string, string>;
+  createdAt: Date;
+};
 
 export type User = {
   id: string;
   telegramUserId: string | null;
   telegramUsername: string | null;
   walletAddress: string;
+  ensName: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -65,6 +77,11 @@ export type Campaign = {
   approvedImageHash: string | null;
   submittedPostUrl: string | null;
   submittedMessageId: string | null;
+  ensName: string | null;
+  ensLabel: string | null;
+  advertiserEnsName: string | null;
+  posterEnsName: string | null;
+  ensEvents: CampaignEnsEvent[];
   status: CampaignStatus;
   startsAt: Date | null;
   endsAt: Date | null;

@@ -88,9 +88,10 @@ export async function promptWithdraw(ctx: TelegramBotContext, chatId: number): P
   );
 }
 
-export async function createDevWallet(ctx: TelegramBotContext, chatId: number, telegramUserId: string): Promise<void> {
-  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId);
-  await ctx.api.sendMessage(chatId, `<b>Wallet Created</b>\n\n<b>Address:</b> <code>${escapeHtml(wallet.address)}</code>\n<b>Provider:</b> ${escapeHtml(wallet.provider)}`, {
+export async function createDevWallet(ctx: TelegramBotContext, chatId: number, telegramUserId: string, telegramUsername?: string | null): Promise<void> {
+  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId, telegramUsername);
+  const user = await ctx.useCases.getUserByWallet(wallet.address);
+  await ctx.api.sendMessage(chatId, `<b>Wallet Created</b>\n\n<b>ENS:</b> <code>${escapeHtml(user?.ensName ?? "not assigned")}</code>\n<b>Address:</b> <code>${escapeHtml(wallet.address)}</code>\n<b>Provider:</b> ${escapeHtml(wallet.provider)}`, {
     parseMode: "HTML",
   });
   await sendDevWalletOverview(ctx, chatId, telegramUserId);

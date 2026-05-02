@@ -5,6 +5,7 @@ import { formatDevTokenAmount } from "../blockchain/viem/devWalletGateway";
 export function formatCampaignSummary(campaign: Campaign): string {
   return [
     `${campaign.id}: ${campaign.amount} for ${campaign.targetTelegramChannelUsername ?? "no channel"}`,
+    campaign.ensName ? `ENS: ${campaign.ensName}` : null,
     `Token: ${campaign.tokenAddress}`,
     `Duration: ${formatDuration(campaign.durationSeconds)}`,
     `Status: ${campaign.status}`,

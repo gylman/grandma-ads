@@ -39,6 +39,9 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
   const text = message.text?.trim() ?? "";
   const chatId = message.chat.id;
   const telegramUserId = String(message.from?.id ?? chatId);
+  if (message.from?.username) {
+    ctx.state.telegramUsernamesById.set(telegramUserId, message.from.username);
+  }
   const pendingPrompt = ctx.state.pendingPromptByChat.get(chatId);
 
   if (pendingPrompt && !text.startsWith("/") && message.reply_to_message?.message_id === pendingPrompt.promptMessageId) {
@@ -245,7 +248,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
 
   if (text.startsWith("/dev_create_wallet") || text.startsWith("/dev_wallet")) {
     await runDevCommand(ctx, chatId, async () => {
-      await createDevWallet(ctx, chatId, telegramUserId);
+      await createDevWallet(ctx, chatId, telegramUserId, message.from?.username ?? null);
     });
     return;
   }

@@ -1,4 +1,5 @@
 import express, { Express } from 'express';
+import { privateKeyToAccount } from 'viem/accounts';
 import { createHttpRouter } from './adapters/http/routes';
 import { createAgentGateway } from './adapters/agent/createAgentGateway';
 import { createViemDevWalletGateway } from './adapters/blockchain/viem/devWalletGateway';
@@ -25,6 +26,8 @@ export async function createRuntime() {
     tokenDecimalsByAddress: createTokenDecimalsByAddress(),
     escrowContractAddress: config.escrowContractAddress as `0x${string}`,
     chainId: config.chainId,
+    ensRootName: config.ensRootName,
+    agentAddress: getVerifierAddress(),
   });
 
   const app = express();
@@ -61,6 +64,11 @@ export async function createRuntime() {
       await persistence.close();
     },
   };
+}
+
+function getVerifierAddress(): string | null {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(config.verifierPrivateKey)) return null;
+  return privateKeyToAccount(config.verifierPrivateKey as `0x${string}`).address;
 }
 
 function createTokenDecimalsByAddress(): Record<string, number> {

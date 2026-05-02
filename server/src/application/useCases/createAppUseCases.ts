@@ -1,6 +1,16 @@
 import { checkContentSafety } from '../../domain/moderation';
+import {
+  createAgentEnsIdentities,
+  createCampaignEnsEvent,
+  createCampaignEnsIdentity,
+  createCampaignEnsIdentityRecord,
+  createUserEnsIdentity,
+  createUserEnsName,
+  ensIdentityFromCampaignEvent,
+} from '../../domain/ens';
 import { CampaignStatus } from '../../domain/types';
 import { verifyPostSnapshot } from '../../domain/verification';
+import { resolveEnsCcipRead } from '../services/ensCcipService';
 import { AgentGateway } from '../ports/agentGateway';
 import { BlockchainGateway } from '../ports/blockchainGateway';
 import { CampaignRepository, CreateDraftCampaignInput, SubmitPostInput } from '../ports/campaignRepository';
@@ -22,15 +32,83 @@ export function createAppUseCases(dependencies: {
   tokenDecimalsByAddress?: Record<string, number>;
   escrowContractAddress: `0x${string}`;
   chainId: number;
+  ensRootName: string;
+  agentAddress?: string | null;
 }) {
   const { users, channels, campaigns, agent, blockchain, devWallets, devWalletGateway } = dependencies;
   const tokenDecimalsByAddress = dependencies.tokenDecimalsByAddress ?? {};
+  const ensRootName = dependencies.ensRootName;
+  const verifierEnsName = `verifier.${ensRootName}`;
 
-  async function ensureDevWallet(telegramUserId: string) {
+  async function ensureDevWallet(telegramUserId: string, telegramUsername?: string | null) {
     const existing = await devWallets.findByTelegramUserId(telegramUserId);
-    if (existing) return existing;
+    if (existing) {
+      await ensureUserEnsIdentity({
+        walletAddress: existing.address,
+        telegramUserId,
+        telegramUsername,
+      });
+      return existing;
+    }
 
-    return await devWallets.save(await devWalletGateway.createWallet(telegramUserId));
+    const wallet = await devWallets.save(await devWalletGateway.createWallet(telegramUserId));
+    await ensureUserEnsIdentity({
+      walletAddress: wallet.address,
+      telegramUserId,
+      telegramUsername,
+    });
+    return wallet;
+  }
+
+  async function ensureUserEnsIdentity(input: UpsertUserInput) {
+    const existing = input.telegramUserId ? await users.findByTelegramUserId(input.telegramUserId) : await users.findByWallet(input.walletAddress);
+    const ensName =
+      input.ensName ??
+      existing?.ensName ??
+      createUserEnsName({
+        rootName: ensRootName,
+        telegramUsername: input.telegramUsername ?? existing?.telegramUsername,
+        walletAddress: input.walletAddress,
+      });
+
+    return users.upsert({
+      ...input,
+      telegramUsername: input.telegramUsername ?? existing?.telegramUsername ?? null,
+      ensName,
+    });
+  }
+
+  async function appendCampaignEnsEvent(
+    campaignId: string,
+    type: 'LOCKED' | 'STARTED' | 'COMPLETED' | 'REFUNDED' | 'VERIFIED',
+    txHash: `0x${string}` | string | null,
+    agentEnsName = verifierEnsName,
+  ) {
+    const campaign = await campaigns.findById(campaignId);
+    if (!campaign) throw new Error('Campaign not found');
+
+    const event = createCampaignEnsEvent({
+      campaign,
+      type,
+      txHash,
+      agentEnsName,
+    });
+
+    return campaigns.patch(campaign.id, {
+      ensEvents: [...(campaign.ensEvents ?? []), event],
+    });
+  }
+
+  async function collectEnsRecords() {
+    const [allUsers, allCampaigns] = await Promise.all([users.list(), campaigns.list()]);
+    return [
+      ...createAgentEnsIdentities(ensRootName, dependencies.agentAddress ?? null),
+      ...allUsers.map(createUserEnsIdentity).filter((record): record is NonNullable<typeof record> => record !== null),
+      ...allCampaigns.flatMap((campaign) => [
+        createCampaignEnsIdentityRecord(campaign),
+        ...(campaign.ensEvents ?? []).map(ensIdentityFromCampaignEvent),
+      ]).filter((record): record is NonNullable<typeof record> => record !== null),
+    ];
   }
 
   async function fundDevCampaignFromBalance(telegramUserId: string, campaignId: string) {
@@ -40,13 +118,16 @@ export function createAppUseCases(dependencies: {
     let campaign = await campaigns.findById(campaignId);
     if (!campaign) throw new Error('Campaign not found');
     if (campaign.advertiserUserId === pendingAdvertiserUserId(telegramUserId)) {
-      const user = await users.upsert({
+      const existingUser = await users.findByTelegramUserId(telegramUserId);
+      const user = await ensureUserEnsIdentity({
         walletAddress: wallet.address,
         telegramUserId,
+        telegramUsername: existingUser?.telegramUsername,
       });
       campaign = await campaigns.patch(campaign.id, {
         advertiserUserId: user.id,
         advertiserWalletAddress: wallet.address,
+        advertiserEnsName: user.ensName,
       });
     }
     if (campaign.advertiserWalletAddress.toLowerCase() !== wallet.address.toLowerCase()) {
@@ -128,6 +209,7 @@ export function createAppUseCases(dependencies: {
     updated = await campaigns.patch(updated.id, {
       onchainCampaignId: result.onchainCampaignId.toString(),
     });
+    updated = await appendCampaignEnsEvent(updated.id, 'LOCKED', result.txHash);
 
     return {
       campaign: updated,
@@ -146,7 +228,7 @@ export function createAppUseCases(dependencies: {
     },
 
     async upsertUser(input: UpsertUserInput) {
-      return users.upsert(input);
+      return ensureUserEnsIdentity(input);
     },
 
     async getUserByWallet(walletAddress: string) {
@@ -181,10 +263,37 @@ export function createAppUseCases(dependencies: {
         throw error;
       }
 
-      return campaigns.createDraft(input);
+      const advertiser = await users.findById(input.advertiserUserId);
+      const advertiserEnsName =
+        input.advertiserEnsName ??
+        advertiser?.ensName ??
+        createUserEnsName({
+          rootName: ensRootName,
+          telegramUsername: advertiser?.telegramUsername,
+          walletAddress: input.advertiserWalletAddress,
+        });
+      const identity = createCampaignEnsIdentity({
+        rootName: ensRootName,
+        userEnsName: advertiserEnsName,
+        telegramUsername: advertiser?.telegramUsername,
+      });
+
+      return campaigns.createDraft({
+        ...input,
+        id: input.id ?? identity.id,
+        ensLabel: input.ensLabel ?? identity.ensLabel,
+        ensName: input.ensName ?? identity.ensName,
+        advertiserEnsName,
+      });
     },
 
-    async createCampaignDraftFromMessage(input: { advertiserUserId: string; advertiserWalletAddress: string; tokenAddress: string; message: string }) {
+    async createCampaignDraftFromMessage(input: {
+      advertiserUserId: string;
+      advertiserWalletAddress: string;
+      telegramUsername?: string | null;
+      tokenAddress: string;
+      message: string;
+    }) {
       const recommendation = await agent.analyzeCampaignRequest(input.message);
       if (!recommendation.safety.allowed) {
         return { status: 'BLOCKED' as const, recommendation };
@@ -207,17 +316,35 @@ export function createAppUseCases(dependencies: {
         return { status: 'POSTER_NOT_FOUND' as const, recommendation };
       }
 
+      const advertiserEnsName = createUserEnsName({
+        rootName: ensRootName,
+        telegramUsername: input.telegramUsername,
+        walletAddress: /^0x[a-fA-F0-9]{40}$/.test(input.advertiserWalletAddress)
+          ? input.advertiserWalletAddress
+          : '0x0000000000000000000000000000000000000000',
+      });
+      const identity = createCampaignEnsIdentity({
+        rootName: ensRootName,
+        userEnsName: advertiserEnsName,
+        telegramUsername: input.telegramUsername,
+      });
+
       const campaign = await campaigns.createDraft({
+        id: identity.id,
         advertiserUserId: input.advertiserUserId,
         advertiserWalletAddress: input.advertiserWalletAddress,
+        advertiserEnsName,
         posterUserId: poster.id,
         posterWalletAddress: poster.walletAddress,
+        posterEnsName: poster.ensName,
         channelId: channel.id,
         targetTelegramChannelUsername: `@${channel.telegramChannelUsername ?? targetChannel.replace(/^@/, '')}`,
         tokenAddress: input.tokenAddress,
         amount: recommendation.intake.amount ?? '',
         durationSeconds: recommendation.intake.durationSeconds ?? 0,
         requestedText: recommendation.intake.adText ?? input.message,
+        ensLabel: identity.ensLabel,
+        ensName: identity.ensName,
       });
 
       const updatedCampaign = await campaigns.patch(campaign.id, {
@@ -225,6 +352,25 @@ export function createAppUseCases(dependencies: {
       });
 
       return { status: 'CREATED' as const, recommendation, campaign: updatedCampaign, channel, poster };
+    },
+
+    async listEnsRecords() {
+      return {
+        rootName: ensRootName,
+        records: await collectEnsRecords(),
+      };
+    },
+
+    async resolveEnsName(name: string) {
+      const normalizedName = name.trim().toLowerCase();
+      return (await collectEnsRecords()).find((record) => record.name.toLowerCase() === normalizedName) ?? null;
+    },
+
+    async resolveEnsCcipRead(input: { sender: string; data: string }) {
+      return resolveEnsCcipRead({
+        ...input,
+        records: await collectEnsRecords(),
+      });
     },
 
     async listCampaigns() {
@@ -400,7 +546,10 @@ export function createAppUseCases(dependencies: {
         txHash = await blockchain.refundCampaign(BigInt(campaign.onchainCampaignId));
       }
 
-      const updated = await campaigns.advance(campaign.id, 'REFUNDED');
+      let updated = await campaigns.advance(campaign.id, 'REFUNDED');
+      if (txHash) {
+        updated = await appendCampaignEnsEvent(updated.id, 'REFUNDED', txHash);
+      }
       return { campaign: updated, txHash };
     },
 
@@ -432,7 +581,16 @@ export function createAppUseCases(dependencies: {
         observedText: input.observedText,
       });
 
-      return { campaign: await campaigns.findById(updated.id), ...output };
+      let campaignAfterVerification = await campaigns.findById(updated.id);
+      if (output.check.status === 'PASSED' && campaignAfterVerification?.onchainCampaignId) {
+        const alreadyStarted = campaignAfterVerification.ensEvents.some((event) => event.type === 'STARTED');
+        if (!alreadyStarted) {
+          const txHash = await blockchain.startCampaign(BigInt(campaignAfterVerification.onchainCampaignId));
+          campaignAfterVerification = await appendCampaignEnsEvent(campaignAfterVerification.id, 'STARTED', txHash);
+        }
+      }
+
+      return { campaign: campaignAfterVerification, ...output };
     },
 
     async handleObservedCampaignPostEdit(input: { channelUsername: string; messageId: string; observedText?: string | null }) {
@@ -459,13 +617,14 @@ export function createAppUseCases(dependencies: {
       let updated = await campaigns.advance(campaign.id, 'FAILED');
       if (txHash) {
         updated = await campaigns.advance(updated.id, 'REFUNDED');
+        updated = await appendCampaignEnsEvent(updated.id, 'REFUNDED', txHash);
       }
 
       return { campaign: updated, result, status: txHash ? ('REFUNDED' as const) : ('FAILED' as const), txHash };
     },
 
-    async ensureDevWallet(telegramUserId: string) {
-      return ensureDevWallet(telegramUserId);
+    async ensureDevWallet(telegramUserId: string, telegramUsername?: string | null) {
+      return ensureDevWallet(telegramUserId, telegramUsername);
     },
 
     async getDevWallet(telegramUserId: string) {
@@ -639,17 +798,18 @@ function pendingAdvertiserUserId(telegramUserId: string): string {
 }
 
 function formatCreateCampaignAuthorizationMessage(
-  campaign: { id: string; amount: string; targetTelegramChannelUsername: string | null; durationSeconds: number },
+  campaign: { id: string; ensName?: string | null; amount: string; targetTelegramChannelUsername: string | null; durationSeconds: number },
   tokenSymbol: string,
 ): string {
   return [
     'Authorize Grandma Ads to lock funds for this campaign.',
     `Campaign: ${campaign.id}`,
+    campaign.ensName ? `ENS: ${campaign.ensName}` : null,
     `Target channel: ${campaign.targetTelegramChannelUsername ?? 'not set'}`,
     `Amount: ${campaign.amount} ${tokenSymbol}`,
     `Duration: ${formatDuration(campaign.durationSeconds)}`,
     'The poster is paid only if the approved ad is published and verification passes.',
-  ].join('\n');
+  ].filter((line): line is string => line !== null).join('\n');
 }
 
 function formatDuration(durationSeconds: number): string {

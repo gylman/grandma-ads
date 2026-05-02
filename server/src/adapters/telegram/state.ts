@@ -45,6 +45,7 @@ export function createTelegramBotState() {
     pendingCounterDraftByChat: new Map<number, CounterDraft>(),
     pendingCounterProposalByChatCampaign: new Map<string, CounterProposal>(),
     balanceWatchers: new Map<number, BalanceWatcher>(),
+    telegramUsernamesById: new Map<string, string>(),
   };
 }
 

@@ -7,7 +7,7 @@ import { PersistenceAdapterPort } from '../../../application/ports/persistence';
 import { UpsertUserInput } from '../../../application/ports/userRepository';
 import { AppConfig } from '../../../config';
 import { createCampaign, transitionCampaign } from '../../../domain/campaign';
-import { Campaign, CampaignStatus, Channel, ChannelStatus, User, VerificationCheck } from '../../../domain/types';
+import { Campaign, CampaignEnsEvent, CampaignStatus, Channel, ChannelStatus, User, VerificationCheck } from '../../../domain/types';
 import { verifyPostSnapshot } from '../../../domain/verification';
 
 type UserDocument = User & {
@@ -48,6 +48,7 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
               ...existing,
               telegramUserId: input.telegramUserId ?? existing.telegramUserId,
               telegramUsername: input.telegramUsername ?? existing.telegramUsername,
+              ensName: input.ensName ?? existing.ensName,
               updatedAt: now,
             };
 
@@ -57,6 +58,7 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
                 $set: {
                   telegramUserId: updated.telegramUserId,
                   telegramUsername: updated.telegramUsername,
+                  ensName: updated.ensName,
                   updatedAt: updated.updatedAt,
                 },
               },
@@ -71,6 +73,7 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
             walletAddressLower: normalizedWallet,
             telegramUserId: input.telegramUserId ?? null,
             telegramUsername: input.telegramUsername ?? null,
+            ensName: input.ensName ?? null,
             createdAt: now,
             updatedAt: now,
           };
@@ -84,6 +87,11 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
           return user ? toUser(user) : null;
         },
 
+        async list(): Promise<User[]> {
+          const users = await models.User.find({}).sort({ createdAt: -1 }).lean<UserDocument[]>();
+          return users.map(toUser);
+        },
+
         async findById(userId: string): Promise<User | null> {
           const user = await models.User.findOne({ id: userId }).lean<UserDocument | null>();
           return user ? toUser(user) : null;
@@ -91,6 +99,11 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
 
         async findByTelegramUserId(telegramUserId: string): Promise<User | null> {
           const user = await models.User.findOne({ telegramUserId }).lean<UserDocument | null>();
+          return user ? toUser(user) : null;
+        },
+
+        async findByEnsName(ensName: string): Promise<User | null> {
+          const user = await models.User.findOne({ ensName: ensName.toLowerCase() }).lean<UserDocument | null>();
           return user ? toUser(user) : null;
         },
 
@@ -184,7 +197,7 @@ export async function createMongoPersistenceAdapter(config: AppConfig): Promise<
 
       campaigns: {
         async createDraft(input: CreateDraftCampaignInput): Promise<Campaign> {
-          const campaign = createCampaign({ ...input, id: id('cmp') });
+          const campaign = createCampaign({ ...input, id: input.id ?? id('cmp') });
           await models.Campaign.create(campaign);
           return campaign;
         },
@@ -312,6 +325,7 @@ function createModels(connection: Connection) {
       telegramUsername: { type: String, default: null },
       walletAddress: { type: String, required: true },
       walletAddressLower: { type: String, required: true, unique: true },
+      ensName: { type: String, default: null, index: true },
       createdAt: { type: Date, required: true },
       updatedAt: { type: Date, required: true },
     },
@@ -336,14 +350,29 @@ function createModels(connection: Connection) {
     { versionKey: false },
   );
 
+  const campaignEnsEventSchema = new Schema<CampaignEnsEvent>(
+    {
+      name: { type: String, required: true },
+      type: { type: String, enum: ['LOCKED', 'STARTED', 'COMPLETED', 'REFUNDED', 'VERIFIED'], required: true },
+      txHash: { type: String, default: null },
+      agentEnsName: { type: String, required: true },
+      onchainCampaignId: { type: String, default: null },
+      textRecords: { type: Schema.Types.Mixed, default: {} },
+      createdAt: { type: Date, required: true },
+    },
+    { _id: false, versionKey: false },
+  );
+
   const campaignSchema = new Schema<Campaign>(
     {
       id: { type: String, required: true, unique: true },
       onchainCampaignId: { type: String, default: null },
       advertiserUserId: { type: String, required: true, index: true },
       advertiserWalletAddress: { type: String, required: true },
+      advertiserEnsName: { type: String, default: null },
       posterUserId: { type: String, default: null },
       posterWalletAddress: { type: String, default: null },
+      posterEnsName: { type: String, default: null },
       channelId: { type: String, default: null },
       targetTelegramChannelUsername: { type: String, default: null },
       targetTelegramChannelId: { type: String, default: null },
@@ -358,6 +387,9 @@ function createModels(connection: Connection) {
       approvedImageHash: { type: String, default: null },
       submittedPostUrl: { type: String, default: null },
       submittedMessageId: { type: String, default: null },
+      ensName: { type: String, default: null, index: true },
+      ensLabel: { type: String, default: null },
+      ensEvents: { type: [campaignEnsEventSchema], default: [] },
       status: {
         type: String,
         enum: [
@@ -429,6 +461,7 @@ function toUser(user: UserDocument): User {
     telegramUserId: user.telegramUserId,
     telegramUsername: user.telegramUsername,
     walletAddress: user.walletAddress,
+    ensName: user.ensName ?? null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -460,8 +493,10 @@ function toCampaign(campaign: Campaign): Campaign {
     onchainCampaignId: campaign.onchainCampaignId,
     advertiserUserId: campaign.advertiserUserId,
     advertiserWalletAddress: campaign.advertiserWalletAddress,
+    advertiserEnsName: campaign.advertiserEnsName ?? null,
     posterUserId: campaign.posterUserId,
     posterWalletAddress: campaign.posterWalletAddress,
+    posterEnsName: campaign.posterEnsName ?? null,
     channelId: campaign.channelId,
     targetTelegramChannelUsername: campaign.targetTelegramChannelUsername,
     targetTelegramChannelId: campaign.targetTelegramChannelId,
@@ -476,6 +511,9 @@ function toCampaign(campaign: Campaign): Campaign {
     approvedImageHash: campaign.approvedImageHash,
     submittedPostUrl: campaign.submittedPostUrl,
     submittedMessageId: campaign.submittedMessageId,
+    ensName: campaign.ensName ?? null,
+    ensLabel: campaign.ensLabel ?? null,
+    ensEvents: campaign.ensEvents ?? [],
     status: campaign.status,
     startsAt: campaign.startsAt,
     endsAt: campaign.endsAt,

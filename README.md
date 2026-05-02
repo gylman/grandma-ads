@@ -452,6 +452,75 @@ Run frontend:
 pnpm --filter client dev
 ```
 
+## ENS Integration
+
+The server now treats ENS names as product identities, not only pretty labels.
+
+Configured root:
+
+```txt
+ENS_ROOT_NAME=ethy-ads.eth
+```
+
+Manual agent subdomains expected under that root:
+
+```txt
+intaker.ethy-ads.eth
+negotiator.ethy-ads.eth
+verifier.ethy-ads.eth
+safety-manager.ethy-ads.eth
+translator.ethy-ads.eth
+user.ethy-ads.eth
+channel.ethy-ads.eth
+```
+
+When a dev wallet is created from Telegram, the server assigns a user name from the Telegram username:
+
+```txt
+alice.user.ethy-ads.eth
+```
+
+Campaigns get deterministic readable IDs and a fuller ENS name:
+
+```txt
+cmp_alice_03-05-2026-14:30:10-UTC
+cmp-alice-03-05-2026-14-30-10-utc.campaigns.alice.user.ethy-ads.eth
+```
+
+Lifecycle transactions create child records under the campaign name, for example lock/start/refund records with tx hash, verifier agent name, onchain campaign id, and timestamp.
+
+Useful endpoints:
+
+```txt
+GET /api/ens/records
+GET /api/ens/resolve?name=<ens-name>
+POST /api/ens/ccip-read
+GET /api/ens/ccip-read?sender=<resolver>&data=<calldata>
+GET /api/ens/ccip-read/<resolver>/<calldata>.json
+```
+
+The CCIP-read endpoints accept the standard EIP-3668 `sender` and `data` inputs and return `{ "data": "0x..." }`. They support direct resolver calldata for `addr(bytes32)`, `addr(bytes32,uint256)`, `text(bytes32,string)`, plus ENSIP-10 wildcard calldata via `resolve(bytes name, bytes data)`.
+
+There is also a demo resolver contract:
+
+```txt
+chain/src/EthyAdsOffchainResolver.sol
+```
+
+Deploy it locally or on Sepolia with:
+
+```sh
+pnpm --filter chain deploy:ens-resolver
+```
+
+Set this in `chain/.env` before deploying:
+
+```txt
+ENS_CCIP_GATEWAY_URL=http://localhost:3001/api/ens/ccip-read/{sender}/{data}.json
+```
+
+For a public demo, replace localhost with your public server URL, then set the resolver for the relevant ENS parent name/subname in ENS Manager.
+
 ## Environment Variables
 
 Environment files are split by package. Do not put all runtime values in the repo root `.env`.
@@ -483,6 +552,7 @@ USDC_TOKEN_ADDRESS=
 INITIAL_USDC_RECIPIENT=
 INITIAL_USDC_MINT=1000000000000
 MINTS_FILE=mint.mock-usdc.json
+ENS_CCIP_GATEWAY_URL=http://localhost:3001/api/ens/ccip-read/{sender}/{data}.json
 ETHERSCAN_API_KEY=
 ```
 
@@ -513,6 +583,7 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
+ENS_ROOT_NAME=ethy-ads.eth
 ```
 
 Client:

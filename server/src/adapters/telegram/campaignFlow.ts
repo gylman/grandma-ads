@@ -103,6 +103,7 @@ export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatI
   const result = await ctx.useCases.createCampaignDraftFromMessage({
     advertiserUserId: pendingAdvertiserUserId(telegramUserId),
     advertiserWalletAddress: pendingAdvertiserWalletAddress(telegramUserId),
+    telegramUsername: ctx.state.telegramUsernamesById.get(telegramUserId) ?? null,
     tokenAddress: token.address,
     message: rawInput,
   });

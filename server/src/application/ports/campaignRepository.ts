@@ -1,10 +1,13 @@
 import { Campaign, CampaignStatus, VerificationCheck, VerificationType } from '../../domain/types';
 
 export type CreateDraftCampaignInput = {
+  id?: string;
   advertiserUserId: string;
   advertiserWalletAddress: string;
+  advertiserEnsName?: string | null;
   posterUserId?: string | null;
   posterWalletAddress?: string | null;
+  posterEnsName?: string | null;
   channelId?: string | null;
   tokenAddress: string;
   amount: string;
@@ -13,6 +16,8 @@ export type CreateDraftCampaignInput = {
   requestedText?: string | null;
   requestedImageUrl?: string | null;
   requestedImageHash?: string | null;
+  ensName?: string | null;
+  ensLabel?: string | null;
 };
 
 export type SubmitPostInput = {

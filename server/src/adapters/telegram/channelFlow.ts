@@ -13,10 +13,11 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
     return;
   }
 
-  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId);
+  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId, ctx.state.telegramUsernamesById.get(telegramUserId) ?? null);
   const user = await ctx.useCases.upsertUser({
     walletAddress: wallet.address,
     telegramUserId,
+    telegramUsername: ctx.state.telegramUsernamesById.get(telegramUserId) ?? null,
   });
 
   const registration = await ctx.useCases.registerChannel({
@@ -62,7 +63,7 @@ export async function verifyChannelFromPostUrl(ctx: TelegramBotContext, chatId: 
     return false;
   }
 
-  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId);
+  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId, ctx.state.telegramUsernamesById.get(telegramUserId) ?? null);
   const user = await ctx.useCases.getUserByWallet(wallet.address);
   if (!user) {
     await ctx.api.sendMessage(chatId, "Please create a dev wallet first with /dev_create_wallet.");

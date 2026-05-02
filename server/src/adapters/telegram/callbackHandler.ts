@@ -23,6 +23,9 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
 
   const chatId = message.chat.id;
   const telegramUserId = String(callbackQuery.from.id ?? chatId);
+  if (callbackQuery.from.username) {
+    ctx.state.telegramUsernamesById.set(telegramUserId, callbackQuery.from.username);
+  }
 
   try {
     if (data === "menu:new_campaign") {
@@ -51,7 +54,7 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
     }
     if (data === "dev:create_wallet") {
       await runDevCommand(ctx, chatId, async () => {
-        await createDevWallet(ctx, chatId, telegramUserId);
+        await createDevWallet(ctx, chatId, telegramUserId, callbackQuery.from.username ?? null);
       });
       return;
     }

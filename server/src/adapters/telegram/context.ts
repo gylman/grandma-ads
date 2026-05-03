@@ -46,6 +46,20 @@ export async function runDevCommand(ctx: TelegramBotContext, chatId: number, act
   }
 }
 
+export async function runWithProcessing<T>(
+  ctx: TelegramBotContext,
+  chatId: number,
+  action: () => Promise<T>,
+): Promise<T> {
+  const processing = await ctx.api.sendMessage(chatId, "Processing...");
+
+  try {
+    return await action();
+  } finally {
+    await ctx.api.deleteMessage(chatId, processing.message_id).catch(() => {});
+  }
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);

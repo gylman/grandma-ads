@@ -1,5 +1,5 @@
 import { Campaign } from "../../domain/types";
-import { TelegramBotContext, sendPromptForReply } from "./context";
+import { TelegramBotContext, runWithProcessing, sendPromptForReply } from "./context";
 import { campaignOpeningPrompt, formatMissingFields } from "./copy";
 import { sendDevWalletOverview } from "./devWalletFlow";
 import { formatCampaignSummary, formatDuration } from "./formatters";
@@ -196,7 +196,7 @@ export async function publishCampaignToChannel(ctx: TelegramBotContext, campaign
 export async function acceptCampaignAndPublish(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
   const campaign = await ctx.useCases.acceptCampaignOffer(telegramUserId, campaignId);
   const advertiser = await ctx.useCases.getUserByWallet(campaign.advertiserWalletAddress);
-  const published = await publishCampaignToChannel(ctx, campaign, telegramUserId);
+  const published = await runWithProcessing(ctx, chatId, async () => publishCampaignToChannel(ctx, campaign, telegramUserId));
   if (advertiser?.telegramUserId) {
     await ctx.api.sendMessage(
       Number(advertiser.telegramUserId),
@@ -333,7 +333,7 @@ export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: num
     if (campaign.advertiserWalletAddress.toLowerCase() !== wallet.address.toLowerCase()) {
       throw new Error("Only the advertiser can reject this counter proposal.");
     }
-    const result = await ctx.useCases.rejectCounterOfferAsAdvertiser(telegramUserId, campaignId);
+    const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.rejectCounterOfferAsAdvertiser(telegramUserId, campaignId));
     ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
 
     await ctx.api.sendMessage(
@@ -417,7 +417,12 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
     return;
   }
   await sendDevWalletOverview(ctx, chatId, telegramUserId);
-  const result = await ctx.useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId);
+  const currentCampaign = await ctx.useCases.getCampaign(campaignId);
+  if (!currentCampaign) throw new Error("Campaign not found");
+  const needsOnchainFunding = currentCampaign.status === "DRAFT" || currentCampaign.status === "AWAITING_FUNDS";
+  const result = needsOnchainFunding
+    ? await runWithProcessing(ctx, chatId, async () => ctx.useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId))
+    : await ctx.useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId);
   const campaign = result.campaign;
   const poster = campaign.posterWalletAddress ? await ctx.useCases.getUserByWallet(campaign.posterWalletAddress) : null;
   if (!poster?.telegramUserId) throw new Error("Poster Telegram account is not linked.");
@@ -488,7 +493,7 @@ export async function promptRegisterChannel(ctx: TelegramBotContext, chatId: num
 }
 
 export async function fundCampaignOnly(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
-  const result = await ctx.useCases.fundDevCampaignFromBalance(telegramUserId, campaignId);
+  const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.fundDevCampaignFromBalance(telegramUserId, campaignId));
   await ctx.api.sendMessage(
     chatId,
     [`Funds locked for ${result.campaign.id}.`, `On-chain campaign: ${result.onchainCampaignId.toString()}`, `Tx: ${result.txHash}`, "", `Next: /send_offer ${result.campaign.id}`].join("\n"),

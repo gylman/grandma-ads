@@ -45,7 +45,9 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       account,
       ...request,
     });
-    return walletClient.writeContract(await finalizePreparedTransaction(simulation.request));
+    const txHash = await walletClient.writeContract(await finalizePreparedTransaction(simulation.request));
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    return txHash;
   }
 
   return {
@@ -293,6 +295,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
         ...request,
       });
       const txHash = await walletClient.writeContract(await finalizePreparedTransaction(simulation.request));
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
 
       return {
         onchainCampaignId: simulation.result,
@@ -315,9 +318,11 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       senderAddress: wallet.address,
       transaction: transaction as never,
     });
-    return rawSender.sendRawTransaction({
+    const txHash = await rawSender.sendRawTransaction({
       serializedTransaction: serializedTransaction as `0x${string}`,
     });
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+    return txHash;
   }
 }
 

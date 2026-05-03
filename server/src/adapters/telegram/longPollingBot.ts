@@ -2,6 +2,7 @@ import { AppUseCases } from "../../application/useCases/createAppUseCases";
 import { AppConfig } from "../../config";
 import { createTelegramApi } from "./api";
 import { createBalanceMonitor } from "./devWalletFlow";
+import { createFinalSettlementWorker } from "./finalSettlementWorker";
 import { handleCallbackQuery } from "./callbackHandler";
 import { handleChannelPost } from "./channelPostHandler";
 import { sleep, TelegramBotContext } from "./context";
@@ -25,6 +26,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     state: createTelegramBotState(),
   };
   const balanceMonitorWorker = createBalanceMonitor(ctx);
+  const finalSettlementWorker = createFinalSettlementWorker(ctx);
 
   async function poll(): Promise<void> {
     console.log("[telegram]: long polling started");
@@ -66,6 +68,11 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
         void balanceMonitorWorker.pollKnownBalances();
       }, 30_000)
     : null;
+  const finalSettlementMonitor = config.custodialDevMode
+    ? setInterval(() => {
+        void finalSettlementWorker.pollDueCampaigns();
+      }, 30_000)
+    : null;
 
   void ctx.api.request("setMyCommands", {
     commands: telegramCommands(config.custodialDevMode),
@@ -85,6 +92,7 @@ export function startTelegramLongPollingBot(config: AppConfig, useCases: AppUseC
     stop() {
       stopped = true;
       if (balanceMonitor) clearInterval(balanceMonitor);
+      if (finalSettlementMonitor) clearInterval(finalSettlementMonitor);
     },
   };
 }

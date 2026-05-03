@@ -1,4 +1,5 @@
 import { TelegramBotContext } from "./context";
+import { formatCampaignLabel } from "./formatters";
 import { getMessageText } from "./postUtils";
 import { TelegramMessage } from "./types";
 
@@ -7,6 +8,10 @@ export async function handleChannelPost(ctx: TelegramBotContext, message: Telegr
   if (!channelUsername) return;
 
   const observedText = getMessageText(message);
+  if (!isEdited && observedText) {
+    const verificationHandled = await handlePendingChannelVerification(ctx, message, channelUsername, observedText);
+    if (verificationHandled) return;
+  }
   if (!observedText) return;
 
   if (!isEdited) {
@@ -28,11 +33,50 @@ export async function handleChannelPost(ctx: TelegramBotContext, message: Telegr
   const advertiser = await ctx.useCases.getUserByWallet(result.campaign.advertiserWalletAddress);
   const poster = result.campaign.posterWalletAddress ? await ctx.useCases.getUserByWallet(result.campaign.posterWalletAddress) : null;
   const notice = [
-    `Campaign ${result.campaign.id} changed after it was active.`,
+    `${formatCampaignLabel(result.campaign)} changed after it was active.`,
     result.result.reason ?? "The post no longer matches the approved ad.",
     result.txHash ? `Refund tx: ${result.txHash}` : "Refund transaction was not sent because there is no on-chain campaign id.",
   ].join("\n");
 
   if (advertiser?.telegramUserId) await ctx.api.sendMessage(Number(advertiser.telegramUserId), notice);
   if (poster?.telegramUserId) await ctx.api.sendMessage(Number(poster.telegramUserId), notice);
+}
+
+async function handlePendingChannelVerification(
+  ctx: TelegramBotContext,
+  message: TelegramMessage,
+  channelUsername: string,
+  observedText: string,
+): Promise<boolean> {
+  const pendingChannels = (await ctx.useCases.listChannels())
+    .filter((channel) => channel.status === "PENDING" && channel.verificationCode)
+    .filter((channel) => channel.telegramChannelUsername?.replace(/^@/, "").toLowerCase() === channelUsername.toLowerCase());
+
+  const match = pendingChannels.find((channel) => observedText.includes(channel.verificationCode!));
+  if (!match) return false;
+
+  const postUrl = `https://t.me/${channelUsername}/${message.message_id}`;
+  await ctx.useCases.verifyChannel(match.id, postUrl);
+
+  for (const [chatId, channelId] of ctx.state.pendingChannelVerification) {
+    if (channelId === match.id) {
+      ctx.state.pendingChannelVerification.delete(chatId);
+    }
+  }
+
+  try {
+    await ctx.api.deleteMessage(`@${channelUsername}`, message.message_id);
+  } catch (error) {
+    console.error("[telegram]: could not delete verification post", match.id, error instanceof Error ? error.message : error);
+  }
+
+  const owner = await ctx.useCases.getUserById(match.ownerUserId);
+  if (owner?.telegramUserId) {
+    await ctx.api.sendMessage(
+      Number(owner.telegramUserId),
+      ["Channel verified:", `https://t.me/${channelUsername}`, "", "You will be notified if someone wants to run ads on your channel."].join("\n"),
+    );
+  }
+
+  return true;
 }

@@ -24,6 +24,7 @@ export type AppConfig = {
   dynamicAuthToken: string;
   openaiApiKey: string;
   openaiModel: string;
+  ensRootName: string;
 };
 
 export const config: AppConfig = {
@@ -50,6 +51,7 @@ export const config: AppConfig = {
   dynamicAuthToken: process.env.DYNAMIC_AUTH_TOKEN ?? process.env.AUTH_TOKEN ?? '',
   openaiApiKey: process.env.OPENAI_API_KEY ?? '',
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+  ensRootName: process.env.ENS_ROOT_NAME ?? 'ethy-ads.eth',
 };
 
 function parseTelegramBotMode(mode: string | undefined, token: string | undefined): AppConfig['telegramBotMode'] {

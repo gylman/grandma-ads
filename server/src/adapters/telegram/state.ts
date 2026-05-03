@@ -7,6 +7,7 @@ export type PendingPrompt = {
   type: PromptType;
   promptMessageId: number;
   campaignId?: string;
+  seedText?: string;
 };
 
 export type BalanceWatcher = {
@@ -45,6 +46,7 @@ export function createTelegramBotState() {
     pendingCounterDraftByChat: new Map<number, CounterDraft>(),
     pendingCounterProposalByChatCampaign: new Map<string, CounterProposal>(),
     balanceWatchers: new Map<number, BalanceWatcher>(),
+    telegramUsernamesById: new Map<string, string>(),
   };
 }
 

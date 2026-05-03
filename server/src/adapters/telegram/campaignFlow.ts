@@ -1,11 +1,12 @@
 import { Campaign } from "../../domain/types";
-import { TelegramBotContext, sendPromptForReply } from "./context";
+import { TelegramBotContext, runWithProcessing, sendPromptForReply } from "./context";
 import { campaignOpeningPrompt, formatMissingFields } from "./copy";
 import { sendDevWalletOverview } from "./devWalletFlow";
-import { formatCampaignSummary, formatDuration } from "./formatters";
+import { formatAdReceiptHtml, formatCampaignLabel, formatCampaignReference, formatCampaignSummary, formatDuration } from "./formatters";
 import { pendingAdvertiserUserId, pendingAdvertiserWalletAddress } from "./identity";
-import { counterDraftActionButtons, counterResponseActionButtons, offerActionButtons } from "./keyboards";
+import { campaignListButtons, counterDraftActionButtons, counterResponseActionButtons, offerActionButtons } from "./keyboards";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
+import { fundingProofLinks } from "./proofLinks";
 import { escapeHtml, highlightNegotiationTerms } from "./richText";
 import { campaignIdFromReply, counterProposalKey, rememberCampaignMessage } from "./state";
 import { parseDuration, parseTokenAmountForButton, resolveRequestedToken } from "./tokenUtils";
@@ -13,6 +14,7 @@ import { TelegramInlineKeyboardButton, TelegramMessage, TelegramReplyMarkup } fr
 
 export async function canShowSendOfferButton(ctx: TelegramBotContext, telegramUserId: string, campaign: Campaign): Promise<boolean> {
   if (!["DRAFT", "AWAITING_FUNDS", "FUNDED"].includes(campaign.status)) return false;
+  if (campaign.status === "FUNDED") return true;
 
   const wallet = await ctx.useCases.getDevWallet(telegramUserId);
   if (!wallet) return false;
@@ -30,12 +32,15 @@ export async function canShowSendOfferButton(ctx: TelegramBotContext, telegramUs
 }
 
 export async function buildDraftActionButtons(ctx: TelegramBotContext, telegramUserId: string, campaign: Campaign): Promise<TelegramReplyMarkup> {
-  const rows: TelegramInlineKeyboardButton[][] = [[{ text: "Revise Copy", callback_data: `campaign:revise:${campaign.id}` }]];
-  if (await canShowSendOfferButton(ctx, telegramUserId, campaign)) {
-    rows.push([{ text: "Send Offer", callback_data: `campaign:send_offer:${campaign.id}` }]);
-  }
+  void ctx;
+  void telegramUserId;
 
-  return { inline_keyboard: rows };
+  return {
+    inline_keyboard: [
+      [{ text: "Revise Copy", callback_data: `campaign:revise:${campaign.id}` }],
+      [{ text: "Send Offer", callback_data: `campaign:send_offer:${campaign.id}` }],
+    ],
+  };
 }
 
 export async function verifyCampaignPostFromUrl(ctx: TelegramBotContext, chatId: number, telegramUserId: string, postUrl: string): Promise<boolean> {
@@ -68,7 +73,7 @@ export async function verifyCampaignPostFromUrl(ctx: TelegramBotContext, chatId:
   if (result.check.status === "PASSED") {
     await ctx.api.sendMessage(chatId, [`Post verified for ${campaign.id}.`, "The campaign is now active. I will use this URL for final checks later."].join("\n"));
     if (advertiser?.telegramUserId) {
-      await ctx.api.sendMessage(Number(advertiser.telegramUserId), `The poster submitted and verified the post for ${campaign.id}:\n${postUrl}`);
+      await ctx.api.sendMessage(Number(advertiser.telegramUserId), `The poster submitted and verified ${formatCampaignLabel(campaign)}.\n${postUrl}`);
     }
     return true;
   }
@@ -76,19 +81,25 @@ export async function verifyCampaignPostFromUrl(ctx: TelegramBotContext, chatId:
   await ctx.api.sendMessage(
     chatId,
     [
-      `Post verification failed for ${campaign.id}.`,
+      `Post verification failed for ${formatCampaignLabel(campaign)}.`,
       result.check.reason ?? "The post did not match the approved ad.",
       "",
       "Please publish the approved text exactly and send the post URL again.",
     ].join("\n"),
   );
   if (advertiser?.telegramUserId) {
-    await ctx.api.sendMessage(Number(advertiser.telegramUserId), `Post verification failed for ${campaign.id}: ${result.check.reason ?? "unknown reason"}`);
+    await ctx.api.sendMessage(Number(advertiser.telegramUserId), `Post verification failed for ${formatCampaignLabel(campaign)}: ${result.check.reason ?? "unknown reason"}`);
   }
   return true;
 }
 
-export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawInput: string): Promise<void> {
+export async function createCampaignDraftFromText(
+  ctx: TelegramBotContext,
+  chatId: number,
+  telegramUserId: string,
+  rawInput: string,
+  requestedImageFileId?: string | null,
+): Promise<void> {
   if (!ctx.config.custodialDevMode) {
     await ctx.api.sendMessage(chatId, `Campaign drafting in the bot is enabled in dev mode only right now. Use ${ctx.config.clientUrl} for wallet actions.`);
     return;
@@ -103,8 +114,10 @@ export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatI
   const result = await ctx.useCases.createCampaignDraftFromMessage({
     advertiserUserId: pendingAdvertiserUserId(telegramUserId),
     advertiserWalletAddress: pendingAdvertiserWalletAddress(telegramUserId),
+    telegramUsername: ctx.state.telegramUsernamesById.get(telegramUserId) ?? null,
     tokenAddress: token.address,
     message: rawInput,
+    requestedImageFileId: requestedImageFileId ?? null,
   });
 
   if (result.status === "BLOCKED") {
@@ -131,7 +144,7 @@ export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatI
         "Example: Promote Grandma Ads on @openagents2026 for 100 USDC for 24 hours. Caption: Sponsored posts with escrow, without spreadsheets.",
       ].join("\n"),
       "CAMPAIGN_DRAFT",
-      { placeholder: "Promote ... on @channel for ..." },
+      { placeholder: "Promote ... on @channel for ...", seedText: rawInput },
     );
     return;
   }
@@ -152,16 +165,21 @@ export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatI
       "Campaign draft created.",
       "",
       formatCampaignSummary(result.campaign),
-      "",
-      "Recommended copy is in the next message so it is easy to copy on mobile.",
     ].join("\n"),
   );
   rememberCampaignMessage(ctx.state, chatId, draftMessage, result.campaign.id, "DRAFT");
-  if (result.campaign.approvedText) {
-    const actions = await buildDraftActionButtons(ctx, telegramUserId, result.campaign);
-    const copyMessage = await ctx.api.sendMessage(chatId, result.campaign.approvedText, {
-      replyMarkup: actions,
-    });
+  const actions = await buildDraftActionButtons(ctx, telegramUserId, result.campaign);
+  const copyMessage = result.campaign.requestedImageFileId
+    ? await ctx.api.sendPhoto(chatId, result.campaign.requestedImageFileId, {
+        caption: result.campaign.approvedText ?? undefined,
+        replyMarkup: actions,
+      })
+    : result.campaign.approvedText
+      ? await ctx.api.sendMessage(chatId, result.campaign.approvedText, {
+          replyMarkup: actions,
+        })
+      : null;
+  if (copyMessage) {
     rememberCampaignMessage(ctx.state, chatId, copyMessage, result.campaign.id, "DRAFT");
   }
 }
@@ -173,7 +191,11 @@ export async function publishCampaignToChannel(ctx: TelegramBotContext, campaign
   const approvedText = campaign.approvedText?.trim();
   if (!approvedText) throw new Error("Campaign approved ad text is missing.");
 
-  const sentMessage = await ctx.api.sendMessage(channelUsername, approvedText);
+  const sentMessage = campaign.requestedImageFileId
+    ? await ctx.api.sendPhoto(channelUsername, campaign.requestedImageFileId, {
+        caption: approvedText,
+      })
+    : await ctx.api.sendMessage(channelUsername, approvedText);
   const publicChannelUsername = channelUsername.replace(/^@/, "");
   const postUrl = `https://t.me/${publicChannelUsername}/${sentMessage.message_id}`;
   const verification = await ctx.useCases.submitCampaignPostUrlFromPoster({
@@ -193,23 +215,32 @@ export async function publishCampaignToChannel(ctx: TelegramBotContext, campaign
 export async function acceptCampaignAndPublish(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
   const campaign = await ctx.useCases.acceptCampaignOffer(telegramUserId, campaignId);
   const advertiser = await ctx.useCases.getUserByWallet(campaign.advertiserWalletAddress);
-  const published = await publishCampaignToChannel(ctx, campaign, telegramUserId);
+  const published = await runWithProcessing(ctx, chatId, async () => publishCampaignToChannel(ctx, campaign, telegramUserId));
   if (advertiser?.telegramUserId) {
     await ctx.api.sendMessage(
       Number(advertiser.telegramUserId),
-      [`Poster accepted ${campaign.id}.`, `The bot published the ad here: ${published.postUrl}`, `Status: ${published.verifiedCampaign?.status ?? "ACTIVE"}`].join("\n"),
+      [
+        formatAdReceiptHtml(published.verifiedCampaign ?? campaign, "Ad is active"),
+        "",
+        `<b>Channel post:</b> ${escapeHtml(published.postUrl)}`,
+      ].join("\n"),
+      { parseMode: "HTML" },
     );
   }
-  await ctx.api.sendMessage(chatId, ["Offer accepted.", `I posted the approved ad in ${campaign.targetTelegramChannelUsername}.`, published.postUrl, "", "The campaign is now active."].join("\n"));
+  await ctx.api.sendMessage(
+    chatId,
+    [formatAdReceiptHtml(published.verifiedCampaign ?? campaign, "Offer accepted"), "", `<b>Channel post:</b> ${escapeHtml(published.postUrl)}`].join("\n"),
+    { parseMode: "HTML" },
+  );
 }
 
 export async function rejectCampaign(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
   const campaign = await ctx.useCases.rejectCampaignOffer(telegramUserId, campaignId);
   const advertiser = await ctx.useCases.getUserByWallet(campaign.advertiserWalletAddress);
   if (advertiser?.telegramUserId) {
-    await ctx.api.sendMessage(Number(advertiser.telegramUserId), `Poster rejected ${campaign.id}.`);
+    await ctx.api.sendMessage(Number(advertiser.telegramUserId), `Publisher rejected ${formatCampaignLabel(campaign)}.`);
   }
-  await ctx.api.sendMessage(chatId, `Rejected ${campaign.id}.`);
+  await ctx.api.sendMessage(chatId, `Rejected ${formatCampaignLabel(campaign)}.`);
 }
 
 export async function counterCampaign(
@@ -275,7 +306,7 @@ export async function sendPreparedCounterCampaign(ctx: TelegramBotContext, chatI
   const recipientChatId = draft.recipientTelegramUserId;
   await ctx.api.sendMessage(
     recipientChatId,
-    [`<b>Counteroffer</b> for <code>${escapeHtml(campaign.id)}</code>:`, "", highlightNegotiationTerms(draft.suggestionReply)].join("\n"),
+    [`<b>Counteroffer</b> for <b>${escapeHtml(formatCampaignReference(campaign))}</b>:`, "", highlightNegotiationTerms(draft.suggestionReply)].join("\n"),
     { replyMarkup: counterResponseActionButtons(campaign.id), parseMode: "HTML" },
   );
 
@@ -314,8 +345,8 @@ export async function acceptCounterProposal(ctx: TelegramBotContext, chatId: num
 
   const updated = await ctx.useCases.acceptCounterOffer(campaignId, proposal.suggestedAmount, proposal.suggestedDurationSeconds);
   ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
-  await ctx.api.sendMessage(chatId, `Counter accepted. Updated campaign:\n${formatCampaignSummary(updated)}`);
-  await ctx.api.sendMessage(proposal.senderTelegramUserId, `Your counteroffer for ${updated.id} was accepted.`);
+  await ctx.api.sendMessage(chatId, `Counter accepted. Updated ${formatCampaignLabel(updated)}:\n${formatCampaignSummary(updated)}`);
+  await ctx.api.sendMessage(proposal.senderTelegramUserId, `Your counteroffer for ${formatCampaignLabel(updated)} was accepted.`);
 }
 
 export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
@@ -330,13 +361,13 @@ export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: num
     if (campaign.advertiserWalletAddress.toLowerCase() !== wallet.address.toLowerCase()) {
       throw new Error("Only the advertiser can reject this counter proposal.");
     }
-    const result = await ctx.useCases.rejectCounterOfferAsAdvertiser(telegramUserId, campaignId);
+    const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.rejectCounterOfferAsAdvertiser(telegramUserId, campaignId));
     ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
 
     await ctx.api.sendMessage(
       proposal.senderTelegramUserId,
       [
-        `Advertiser rejected the counteroffer for ${result.campaign.id}.`,
+        `Advertiser rejected the counteroffer for ${formatCampaignLabel(result.campaign)}.`,
         result.txHash ? `Funds were unlocked back to advertiser balance.\nRefund tx: ${result.txHash}` : "Funds were unlocked back to advertiser balance.",
       ].join("\n"),
     );
@@ -344,7 +375,7 @@ export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: num
     await ctx.api.sendMessage(
       chatId,
       [
-        `Counter rejected for ${result.campaign.id}.`,
+        `Counter rejected for ${formatCampaignLabel(result.campaign)}.`,
         result.txHash ? `Funds were unlocked back to advertiser balance.\nRefund tx: ${result.txHash}` : "Funds were unlocked back to advertiser balance.",
       ].join("\n"),
     );
@@ -356,16 +387,13 @@ export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: num
   }
 
   ctx.state.pendingCounterProposalByChatCampaign.delete(counterProposalKey(chatId, campaignId));
-  await ctx.api.sendMessage(proposal.senderTelegramUserId, `Poster rejected the counteroffer for ${campaign.id}.`);
-  await ctx.api.sendMessage(chatId, `Counter rejected for ${campaign.id}.`);
+  await ctx.api.sendMessage(proposal.senderTelegramUserId, `Publisher rejected the counteroffer for ${formatCampaignLabel(campaign)}.`);
+  await ctx.api.sendMessage(chatId, `Counter rejected for ${formatCampaignLabel(campaign)}.`);
 }
 
 export async function reviseCampaignCopy(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string, instruction: string | null): Promise<void> {
   const result = await ctx.useCases.reviseCampaignCopy(campaignId, instruction);
-  const revisionMessage = await ctx.api.sendMessage(
-    chatId,
-    [`Updated copy for ${result.campaign.id}.`, "", "The new copy is in the next message so it is easy to copy on mobile.", `Why: ${result.suggestion.rationale}`].join("\n"),
-  );
+  const revisionMessage = await ctx.api.sendMessage(chatId, `Updated copy for ${formatCampaignLabel(result.campaign)}.`);
   rememberCampaignMessage(ctx.state, chatId, revisionMessage, result.campaign.id, "DRAFT");
   if (result.campaign.approvedText) {
     const actions = await buildDraftActionButtons(ctx, telegramUserId, result.campaign);
@@ -417,7 +445,12 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
     return;
   }
   await sendDevWalletOverview(ctx, chatId, telegramUserId);
-  const result = await ctx.useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId);
+  const currentCampaign = await ctx.useCases.getCampaign(campaignId);
+  if (!currentCampaign) throw new Error("Campaign not found");
+  const needsOnchainFunding = currentCampaign.status === "DRAFT" || currentCampaign.status === "AWAITING_FUNDS";
+  const result = needsOnchainFunding
+    ? await runWithProcessing(ctx, chatId, async () => ctx.useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId))
+    : await ctx.useCases.fundDevCampaignAndMarkOffered(telegramUserId, campaignId);
   const campaign = result.campaign;
   const poster = campaign.posterWalletAddress ? await ctx.useCases.getUserByWallet(campaign.posterWalletAddress) : null;
   if (!poster?.telegramUserId) throw new Error("Poster Telegram account is not linked.");
@@ -426,53 +459,91 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
     Number(poster.telegramUserId),
     [
       `<b>Offer for ${escapeHtml(campaign.targetTelegramChannelUsername ?? "this channel")}</b>`,
+      campaign.onchainCampaignId ? `<b>Ad:</b> ${escapeHtml(formatCampaignReference(campaign))}` : null,
       "",
       `<b>Amount:</b> ${escapeHtml(campaign.amount)}`,
       `<b>Duration:</b> ${escapeHtml(formatDuration(campaign.durationSeconds))}`,
-      `<b>Rule:</b> Publish the approved copy exactly and keep it live for the full duration.`,
-      "Payment condition: payment is made only after the post is verified to match the approved content and remain live for the required duration.",
+      `<b>Flow:</b> If you accept, I will publish the approved copy in the channel and keep watching it for the full duration.`,
+      "Payment condition: payment is made only after the published post is verified to remain live for the required duration.",
       "",
-      "Approved ad copy is in the next message so it is easy to copy on mobile.",
-    ].join("\n"),
+      "The approved copy preview is in the next message.",
+    ].filter((line): line is string => line !== null).join("\n"),
     { parseMode: "HTML" },
   );
   rememberCampaignMessage(ctx.state, Number(poster.telegramUserId), offerMessage, campaign.id, "OFFER");
   if (campaign.approvedText) {
-    const copyMessage = await ctx.api.sendMessage(Number(poster.telegramUserId), campaign.approvedText, {
-      replyMarkup: offerActionButtons(campaign.id),
-    });
+    const copyMessage = campaign.requestedImageFileId
+      ? await ctx.api.sendPhoto(Number(poster.telegramUserId), campaign.requestedImageFileId, {
+          caption: campaign.approvedText,
+          replyMarkup: offerActionButtons(campaign.id),
+        })
+      : await ctx.api.sendMessage(Number(poster.telegramUserId), campaign.approvedText, {
+          replyMarkup: offerActionButtons(campaign.id),
+        });
     rememberCampaignMessage(ctx.state, Number(poster.telegramUserId), copyMessage, campaign.id, "OFFER");
   }
   await ctx.api.sendMessage(
     chatId,
     [
-      result.funding ? `Funds locked for ${campaign.id}. On-chain campaign: ${result.funding.onchainCampaignId.toString()}` : `Funds were already locked for ${campaign.id}.`,
+      result.funding ? formatAdReceiptHtml(campaign, "Funds locked") : `Funds were already locked for ${formatCampaignLabel(campaign)}.`,
       `Offer sent to @${campaign.targetTelegramChannelUsername?.replace(/^@/, "") ?? "poster"}.`,
-      "",
-      "Signed authorization:",
-      result.funding?.authorizationMessage ?? "Already funded earlier.",
-      result.funding ? `Signature: ${result.funding.authorizationSignature}` : null,
-      result.funding ? `Tx: ${result.funding.txHash}` : null,
+      result.funding ? "" : null,
+      result.funding ? fundingProofLinks(ctx.config, campaign, result.funding.txHash).join(" | ") : null,
     ]
       .filter((line): line is string => line !== null)
       .join("\n"),
+    { parseMode: "HTML" },
   );
 }
 
-export async function showCampaigns(ctx: TelegramBotContext, chatId: number): Promise<void> {
-  const campaigns = await ctx.useCases.listCampaigns();
+export async function showCampaigns(ctx: TelegramBotContext, chatId: number, telegramUserId?: string): Promise<void> {
+  const allCampaigns = await ctx.useCases.listCampaigns();
+  const wallet = telegramUserId ? await ctx.useCases.getDevWallet(telegramUserId) : null;
+  const pendingUserId = telegramUserId ? pendingAdvertiserUserId(telegramUserId) : null;
+  const campaigns = allCampaigns
+    .filter((campaign) => {
+      if (!telegramUserId) return true;
+      if (pendingUserId && campaign.advertiserUserId === pendingUserId) return true;
+      if (wallet && campaign.advertiserWalletAddress.toLowerCase() === wallet.address.toLowerCase()) return true;
+      if (wallet && campaign.posterWalletAddress?.toLowerCase() === wallet.address.toLowerCase()) return true;
+      return false;
+    })
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
   if (campaigns.length === 0) {
-    await ctx.api.sendMessage(chatId, "No campaigns yet.");
+    await ctx.api.sendMessage(chatId, "No ads yet. Tap Create Ad when you are ready.");
     return;
   }
 
   await ctx.api.sendMessage(
     chatId,
-    campaigns
-      .slice(0, 10)
-      .map((campaign) => `${campaign.id}: ${campaign.amount} for ${campaign.targetTelegramChannelUsername ?? "no channel"} (${campaign.status})`)
-      .join("\n"),
+    "Select an ad to continue.",
+    { replyMarkup: campaignListButtons(campaigns.slice(0, 10)) },
   );
+}
+
+export async function showCampaignDetail(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
+  const campaign = await ctx.useCases.getCampaign(campaignId);
+  if (!campaign) throw new Error("Campaign not found");
+
+  await ctx.api.sendMessage(chatId, ["Ad details", "", formatCampaignSummary(campaign)].join("\n"));
+  const actions = ["DRAFT", "AWAITING_FUNDS", "FUNDED"].includes(campaign.status)
+    ? await buildDraftActionButtons(ctx, telegramUserId, campaign)
+    : undefined;
+  if (campaign.approvedText) {
+    const copyMessage = campaign.requestedImageFileId
+      ? await ctx.api.sendPhoto(chatId, campaign.requestedImageFileId, {
+          caption: campaign.approvedText,
+          replyMarkup: actions,
+        })
+      : await ctx.api.sendMessage(chatId, campaign.approvedText, {
+          replyMarkup: actions,
+        });
+    rememberCampaignMessage(ctx.state, chatId, copyMessage, campaign.id, "DRAFT");
+    return;
+  }
+
+  await ctx.api.sendMessage(chatId, "No approved copy is attached to this ad yet.", { replyMarkup: actions });
 }
 
 export async function promptCampaignDraft(ctx: TelegramBotContext, chatId: number): Promise<void> {
@@ -482,16 +553,23 @@ export async function promptCampaignDraft(ctx: TelegramBotContext, chatId: numbe
 }
 
 export async function promptRegisterChannel(ctx: TelegramBotContext, chatId: number): Promise<void> {
-  await sendPromptForReply(ctx, chatId, "Reply to this message with the channel username you want to register.\nExample: @exampleChannel", "REGISTER_CHANNEL", {
-    placeholder: "@exampleChannel",
+  await sendPromptForReply(ctx, chatId, "Reply to this message with the channel link you want to register.\n\nExample:\nhttps://t.me/exampleChannel", "REGISTER_CHANNEL", {
+    placeholder: "https://t.me/exampleChannel",
   });
 }
 
 export async function fundCampaignOnly(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string): Promise<void> {
-  const result = await ctx.useCases.fundDevCampaignFromBalance(telegramUserId, campaignId);
+  const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.fundDevCampaignFromBalance(telegramUserId, campaignId));
   await ctx.api.sendMessage(
     chatId,
-    [`Funds locked for ${result.campaign.id}.`, `On-chain campaign: ${result.onchainCampaignId.toString()}`, `Tx: ${result.txHash}`, "", `Next: /send_offer ${result.campaign.id}`].join("\n"),
+    [
+      formatAdReceiptHtml(result.campaign, "Funds locked"),
+      "",
+      fundingProofLinks(ctx.config, result.campaign, result.txHash).join(" | "),
+      "",
+      `Next: click Send Offer or use /send_offer ${result.campaign.id}`,
+    ].join("\n"),
+    { parseMode: "HTML" },
   );
 }
 
@@ -501,10 +579,10 @@ export async function acceptCounterOffer(ctx: TelegramBotContext, chatId: number
   if (poster?.telegramUserId) {
     await ctx.api.sendMessage(
       Number(poster.telegramUserId),
-      `Advertiser accepted updated terms for ${campaign.id}: ${campaign.amount} for ${formatDuration(campaign.durationSeconds)}.\n\n/send_offer ${campaign.id} will resend the final offer.`,
+      `Advertiser accepted updated terms for ${formatCampaignLabel(campaign)}: ${campaign.amount} for ${formatDuration(campaign.durationSeconds)}.\n\nThe advertiser can resend the final offer now.`,
     );
   }
-  await ctx.api.sendMessage(chatId, `Counter accepted. Updated campaign is back in OFFERED-ready state:\n${formatCampaignSummary(campaign)}`);
+  await ctx.api.sendMessage(chatId, `Counter accepted. ${formatCampaignLabel(campaign)} is back in offered-ready state:\n${formatCampaignSummary(campaign)}`);
 }
 
 export function offerReplyAction(text: string): "ACCEPT" | "REJECT" | "COUNTER" {

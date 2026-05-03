@@ -7,6 +7,7 @@ import {
   rejectCounterProposal,
   sendPreparedCounterCampaign,
   sendOfferFromCampaignId,
+  showCampaignDetail,
   showCampaigns,
 } from "./campaignFlow";
 import { TelegramBotContext, runDevCommand, sendPromptForReply } from "./context";
@@ -23,6 +24,9 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
 
   const chatId = message.chat.id;
   const telegramUserId = String(callbackQuery.from.id ?? chatId);
+  if (callbackQuery.from.username) {
+    ctx.state.telegramUsernamesById.set(telegramUserId, callbackQuery.from.username);
+  }
 
   try {
     if (data === "menu:new_campaign") {
@@ -34,7 +38,7 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
       return;
     }
     if (data === "menu:my_campaigns") {
-      await showCampaigns(ctx, chatId);
+      await showCampaigns(ctx, chatId, telegramUserId);
       return;
     }
     if (data === "menu:balance" || data === "dev:balance") {
@@ -51,7 +55,7 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
     }
     if (data === "dev:create_wallet") {
       await runDevCommand(ctx, chatId, async () => {
-        await createDevWallet(ctx, chatId, telegramUserId);
+        await createDevWallet(ctx, chatId, telegramUserId, callbackQuery.from.username ?? null);
       });
       return;
     }
@@ -75,6 +79,14 @@ export async function handleCallbackQuery(ctx: TelegramBotContext, callbackQuery
           campaignId,
           placeholder: "Make it shorter and more direct.",
         });
+      });
+      return;
+    }
+    if (data.startsWith("campaign:open:")) {
+      const campaignId = data.replace("campaign:open:", "").trim();
+      await runDevCommand(ctx, chatId, async () => {
+        if (!campaignId) throw new Error("Campaign id is missing.");
+        await showCampaignDetail(ctx, chatId, telegramUserId, campaignId);
       });
       return;
     }

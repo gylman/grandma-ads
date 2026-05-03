@@ -78,6 +78,20 @@ export const adEscrowAbi = [
   },
   {
     type: 'function',
+    name: 'withdrawBySig',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+      { name: 'deadline', type: 'uint256' },
+      { name: 'signature', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'startCampaign',
     stateMutability: 'nonpayable',
     inputs: [{ name: 'campaignId', type: 'uint256' }],

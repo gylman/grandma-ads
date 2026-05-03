@@ -96,6 +96,62 @@ export function createHttpRouter(useCases: AppUseCases, config: AppConfig): Rout
     }
   });
 
+  router.get('/api/ens/records', async (_req, res, next) => {
+    try {
+      res.json(await useCases.listEnsRecords());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/api/ens/resolve', async (req, res, next) => {
+    try {
+      const name = typeof req.query.name === 'string' ? req.query.name : '';
+      if (!name) {
+        res.status(400).json({ error: 'name is required' });
+        return;
+      }
+
+      const record = await useCases.resolveEnsName(name);
+      if (!record) {
+        res.status(404).json({ error: 'ENS record not found' });
+        return;
+      }
+
+      res.json({ record });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/api/ens/ccip-read', async (req, res) => {
+    try {
+      const sender = typeof req.body.sender === 'string' ? req.body.sender : '';
+      const data = typeof req.body.data === 'string' ? req.body.data : '';
+      res.json(await useCases.resolveEnsCcipRead({ sender, data }));
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'CCIP-read lookup failed' });
+    }
+  });
+
+  router.get('/api/ens/ccip-read', async (req, res) => {
+    try {
+      const sender = typeof req.query.sender === 'string' ? req.query.sender : '';
+      const data = typeof req.query.data === 'string' ? req.query.data : '';
+      res.json(await useCases.resolveEnsCcipRead({ sender, data }));
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'CCIP-read lookup failed' });
+    }
+  });
+
+  router.get('/api/ens/ccip-read/:sender/:data.json', async (req, res) => {
+    try {
+      res.json(await useCases.resolveEnsCcipRead({ sender: req.params.sender, data: req.params.data }));
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'CCIP-read lookup failed' });
+    }
+  });
+
   router.post('/api/campaigns', async (req, res, next) => {
     try {
       const advertiserUserId = typeof req.body.advertiserUserId === 'string' ? req.body.advertiserUserId : '';
@@ -149,6 +205,48 @@ export function createHttpRouter(useCases: AppUseCases, config: AppConfig): Rout
       }
 
       res.json({ campaign });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/api/proofs/ads/:onchainCampaignId', async (req, res, next) => {
+    try {
+      const campaign = await useCases.getCampaignByOnchainId(req.params.onchainCampaignId);
+      if (!campaign) {
+        res.status(404).json({ error: 'Ad proof not found' });
+        return;
+      }
+
+      res.json({
+        campaign,
+        ensRecord: campaign.ensName ? await useCases.resolveEnsName(campaign.ensName) : null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/api/proofs/ads/:onchainCampaignId/:eventType', async (req, res, next) => {
+    try {
+      const campaign = await useCases.getCampaignByOnchainId(req.params.onchainCampaignId);
+      if (!campaign) {
+        res.status(404).json({ error: 'Ad proof not found' });
+        return;
+      }
+
+      const eventType = req.params.eventType.trim().toUpperCase();
+      const event = campaign.ensEvents.find((item) => item.type === eventType);
+      if (!event) {
+        res.status(404).json({ error: 'Event proof not found' });
+        return;
+      }
+
+      res.json({
+        campaign,
+        event,
+        ensRecord: await useCases.resolveEnsName(event.name),
+      });
     } catch (error) {
       next(error);
     }

@@ -19,7 +19,7 @@ import {
 } from "./campaignFlow";
 import { registerChannelFromText, verifyChannelFromPostUrl } from "./channelFlow";
 import { TelegramBotContext, runDevCommand, sendPromptForReply } from "./context";
-import { helpText } from "./copy";
+import { helpText, startText } from "./copy";
 import {
   createDevWallet,
   depositMockUsdc,
@@ -30,22 +30,26 @@ import {
   sendDevBalanceWithActions,
   withdrawMockUsdc,
 } from "./devWalletFlow";
-import { mainMenuButtons } from "./keyboards";
-import { isTelegramPostUrl } from "./postUtils";
+import { FIXED_BUTTONS, fixedMainKeyboard } from "./keyboards";
+import { getLargestPhotoFileId, getMessageText, isTelegramPostUrl } from "./postUtils";
 import { campaignContextFromReply, campaignIdFromReply, clearChatState } from "./state";
 import { TelegramMessage } from "./types";
 
 export async function handleMessage(ctx: TelegramBotContext, message: TelegramMessage): Promise<void> {
-  const text = message.text?.trim() ?? "";
+  const text = getMessageText(message)?.trim() ?? "";
   const chatId = message.chat.id;
   const telegramUserId = String(message.from?.id ?? chatId);
+  if (message.from?.username) {
+    ctx.state.telegramUsernamesById.set(telegramUserId, message.from.username);
+  }
   const pendingPrompt = ctx.state.pendingPromptByChat.get(chatId);
 
   if (pendingPrompt && !text.startsWith("/") && message.reply_to_message?.message_id === pendingPrompt.promptMessageId) {
     ctx.state.pendingPromptByChat.delete(chatId);
     await runDevCommand(ctx, chatId, async () => {
       if (pendingPrompt.type === "CAMPAIGN_DRAFT") {
-        await createCampaignDraftFromText(ctx, chatId, telegramUserId, text);
+        const combinedText = pendingPrompt.seedText ? `${pendingPrompt.seedText}\n${text}` : text;
+        await createCampaignDraftFromText(ctx, chatId, telegramUserId, combinedText, getLargestPhotoFileId(message));
         return;
       }
       if (pendingPrompt.type === "REGISTER_CHANNEL") {
@@ -107,17 +111,17 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
     return;
   }
 
-  if (text.startsWith("/start")) {
-    await ctx.api.sendMessage(chatId, "Choose an action below.", { replyMarkup: mainMenuButtons() });
+  if (text.startsWith("/start") || text === FIXED_BUTTONS.start) {
+    await ctx.api.sendMessage(chatId, startText(), { replyMarkup: fixedMainKeyboard() });
     return;
   }
 
-  if (text.startsWith("/help")) {
+  if (text.startsWith("/help") || text === FIXED_BUTTONS.help) {
     await ctx.api.sendMessage(chatId, helpText(ctx.config.custodialDevMode));
     return;
   }
 
-  if (text.startsWith("/new_campaign")) {
+  if (text.startsWith("/new_campaign") || text === FIXED_BUTTONS.newAd) {
     await promptCampaignDraft(ctx, chatId);
     return;
   }
@@ -129,7 +133,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
       return;
     }
 
-    await createCampaignDraftFromText(ctx, chatId, telegramUserId, details);
+    await createCampaignDraftFromText(ctx, chatId, telegramUserId, details, getLargestPhotoFileId(message));
     return;
   }
 
@@ -245,7 +249,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
 
   if (text.startsWith("/dev_create_wallet") || text.startsWith("/dev_wallet")) {
     await runDevCommand(ctx, chatId, async () => {
-      await createDevWallet(ctx, chatId, telegramUserId);
+      await createDevWallet(ctx, chatId, telegramUserId, message.from?.username ?? null);
     });
     return;
   }
@@ -260,7 +264,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
     return;
   }
 
-  if (text.startsWith("/dev_balance") || text.startsWith("/balance")) {
+  if (text.startsWith("/dev_balance") || text.startsWith("/balance") || text === FIXED_BUTTONS.balance) {
     if (!ctx.config.custodialDevMode && text.startsWith("/balance")) {
       await ctx.api.sendMessage(chatId, `Wallet balances are shown in the web app: ${ctx.config.clientUrl}`);
       return;
@@ -323,7 +327,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
     return;
   }
 
-  if (text.startsWith("/register_channel")) {
+  if (text.startsWith("/register_channel") || text === FIXED_BUTTONS.registerChannel) {
     const channelFromCommand = text.split(/\s+/)[1];
     if (channelFromCommand && channelFromCommand.startsWith("@")) {
       await registerChannelFromText(ctx, chatId, telegramUserId, channelFromCommand);
@@ -334,13 +338,13 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
     return;
   }
 
-  if (text.startsWith("/my_campaigns")) {
-    await showCampaigns(ctx, chatId);
+  if (text.startsWith("/my_campaigns") || text === FIXED_BUTTONS.myAds) {
+    await showCampaigns(ctx, chatId, telegramUserId);
     return;
   }
 
   if (text.startsWith("/menu")) {
-    await ctx.api.sendMessage(chatId, "Here is the quick action menu.", { replyMarkup: mainMenuButtons() });
+    await ctx.api.sendMessage(chatId, "Choose an action below.", { replyMarkup: fixedMainKeyboard() });
     return;
   }
 

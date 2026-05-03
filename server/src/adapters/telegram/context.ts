@@ -15,7 +15,7 @@ export async function sendPromptForReply(
   chatId: number,
   text: string,
   type: PromptType,
-  options?: { campaignId?: string; placeholder?: string },
+  options?: { campaignId?: string; placeholder?: string; seedText?: string },
 ): Promise<void> {
   const prompt = await ctx.api.sendMessage(chatId, text, {
     replyMarkup: {
@@ -28,6 +28,7 @@ export async function sendPromptForReply(
     type,
     promptMessageId: prompt.message_id,
     campaignId: options?.campaignId,
+    seedText: options?.seedText,
   });
 }
 
@@ -42,7 +43,21 @@ export async function runDevCommand(ctx: TelegramBotContext, chatId: number, act
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[telegram]: dev command failed", message);
-    await ctx.api.sendMessage(chatId, `Dev command failed: ${message}`);
+    await ctx.api.sendMessage(chatId, `I could not complete that yet.\n\n${message}`);
+  }
+}
+
+export async function runWithProcessing<T>(
+  ctx: TelegramBotContext,
+  chatId: number,
+  action: () => Promise<T>,
+): Promise<T> {
+  const processing = await ctx.api.sendMessage(chatId, "⏳ Processing...");
+
+  try {
+    return await action();
+  } finally {
+    await ctx.api.deleteMessage(chatId, processing.message_id).catch(() => {});
   }
 }
 

@@ -8,12 +8,20 @@ export type TelegramUser = {
   username?: string;
 };
 
+export type TelegramPhotoSize = {
+  file_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+};
+
 export type TelegramMessage = {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
   text?: string;
   caption?: string;
+  photo?: TelegramPhotoSize[];
   reply_to_message?: TelegramMessage;
 };
 
@@ -32,6 +40,18 @@ export type TelegramInlineKeyboardButton = {
 
 export type TelegramReplyMarkup = {
   inline_keyboard: TelegramInlineKeyboardButton[][];
+};
+
+export type TelegramKeyboardButton = {
+  text: string;
+};
+
+export type TelegramReplyKeyboardMarkup = {
+  keyboard: Array<Array<TelegramKeyboardButton | string>>;
+  resize_keyboard?: boolean;
+  one_time_keyboard?: boolean;
+  selective?: boolean;
+  input_field_placeholder?: string;
 };
 
 export type TelegramForceReplyMarkup = {

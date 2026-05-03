@@ -1,4 +1,26 @@
-import { TelegramReplyMarkup } from "./types";
+import { TelegramReplyKeyboardMarkup, TelegramReplyMarkup } from "./types";
+
+export const FIXED_BUTTONS = {
+  start: "Start",
+  newAd: "Create Ad",
+  myAds: "My Ads",
+  registerChannel: "Register Channel",
+  balance: "Wallet",
+  help: "Help",
+} as const;
+
+export function fixedMainKeyboard(): TelegramReplyKeyboardMarkup {
+  return {
+    keyboard: [
+      [FIXED_BUTTONS.start],
+      [FIXED_BUTTONS.newAd, FIXED_BUTTONS.myAds],
+      [FIXED_BUTTONS.registerChannel, FIXED_BUTTONS.balance],
+      [FIXED_BUTTONS.help],
+    ],
+    resize_keyboard: true,
+    input_field_placeholder: "Choose an action or write a message",
+  };
+}
 
 export function mainMenuButtons(): TelegramReplyMarkup {
   return {
@@ -20,11 +42,21 @@ export function devWalletButtons(hasWallet: boolean): TelegramReplyMarkup {
 
   return {
     inline_keyboard: [
-      [{ text: "Check Balance", callback_data: "dev:balance" }],
       [{ text: "Mint", callback_data: "dev:prompt_mint" }],
       [{ text: "Deposit", callback_data: "dev:prompt_deposit" }],
       [{ text: "Withdraw", callback_data: "dev:prompt_withdraw" }],
     ],
+  };
+}
+
+export function campaignListButtons(campaigns: Array<{ id: string; onchainCampaignId: string | null; status: string }>): TelegramReplyMarkup {
+  return {
+    inline_keyboard: campaigns.map((campaign, index) => [
+      {
+        text: `${campaign.onchainCampaignId ? `Ad #${campaign.onchainCampaignId}` : `Draft ${index + 1}`} - ${campaign.status}`,
+        callback_data: `campaign:open:${campaign.id}`,
+      },
+    ]),
   };
 }
 
@@ -65,8 +97,8 @@ export function checkBalanceButton(): TelegramReplyMarkup {
 
 export function telegramCommands(custodialDevMode: boolean): Array<{ command: string; description: string }> {
   const commands = [
-    { command: "start", description: "Start drafting a campaign" },
-    { command: "menu", description: "Open quick action buttons" },
+    { command: "start", description: "Show the main bot menu" },
+    { command: "menu", description: "Show the main bot menu" },
     { command: "help", description: "Show available commands" },
     { command: "new_campaign", description: "Create a campaign draft" },
     { command: "campaign_draft", description: "Draft a campaign from one message" },
@@ -87,9 +119,9 @@ export function telegramCommands(custodialDevMode: boolean): Array<{ command: st
     ...commands,
     { command: "dev_create_wallet", description: "Create or show dev wallet" },
     { command: "dev_balance", description: "Show dev balances" },
-    { command: "dev_mint", description: "Mint mock USDC" },
-    { command: "dev_deposit", description: "Deposit mock USDC to escrow" },
-    { command: "dev_withdraw", description: "Withdraw mock USDC from escrow" },
+    { command: "dev_mint", description: "Mint mock USDC or USDT" },
+    { command: "dev_deposit", description: "Deposit mock USDC or USDT to escrow" },
+    { command: "dev_withdraw", description: "Withdraw mock USDC or USDT from escrow" },
     { command: "dev_clear", description: "Clear your dev wallet and campaigns" },
     { command: "sign", description: "Sign a test message" },
   ];

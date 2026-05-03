@@ -1,4 +1,4 @@
-import { TelegramForceReplyMarkup, TelegramMessage, TelegramReplyMarkup, TelegramResponse } from "./types";
+import { TelegramForceReplyMarkup, TelegramMessage, TelegramReplyKeyboardMarkup, TelegramReplyMarkup, TelegramResponse } from "./types";
 
 export type TelegramApi = ReturnType<typeof createTelegramApi>;
 
@@ -24,7 +24,7 @@ export function createTelegramApi(botToken: string) {
     chatId: number | string,
     text: string,
     options?: {
-      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup;
+      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup | TelegramReplyKeyboardMarkup;
       replyToMessageId?: number;
       parseMode?: "HTML" | "MarkdownV2";
     },
@@ -39,15 +39,44 @@ export function createTelegramApi(botToken: string) {
     });
   }
 
+  async function sendPhoto(
+    chatId: number | string,
+    photo: string,
+    options?: {
+      caption?: string;
+      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup | TelegramReplyKeyboardMarkup;
+      replyToMessageId?: number;
+      parseMode?: "HTML" | "MarkdownV2";
+    },
+  ): Promise<TelegramMessage> {
+    return await request<TelegramMessage>("sendPhoto", {
+      chat_id: chatId,
+      photo,
+      caption: options?.caption,
+      reply_markup: options?.replyMarkup,
+      reply_to_message_id: options?.replyToMessageId,
+      parse_mode: options?.parseMode,
+    });
+  }
+
   async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
     await request<boolean>("answerCallbackQuery", {
       callback_query_id: callbackQueryId,
     });
   }
 
+  async function deleteMessage(chatId: number | string, messageId: number): Promise<void> {
+    await request<boolean>("deleteMessage", {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  }
+
   return {
     request,
     sendMessage,
+    sendPhoto,
     answerCallbackQuery,
+    deleteMessage,
   };
 }

@@ -55,6 +55,8 @@ contract AdEscrowTest {
     bytes32 private constant CREATE_CAMPAIGN_TYPEHASH = keccak256(
         "CreateCampaignAuthorization(address advertiser,address poster,address token,uint256 amount,uint256 durationSeconds,uint256 nonce,uint256 deadline)"
     );
+    bytes32 private constant WITHDRAW_TYPEHASH =
+        keccak256("WithdrawAuthorization(address user,address token,uint256 amount,address recipient,uint256 nonce,uint256 deadline)");
     uint256 private constant DEPOSIT = 1_000e6;
     uint256 private constant CAMPAIGN_AMOUNT = 250e6;
     uint256 private constant DURATION = 1 days;
@@ -97,6 +99,32 @@ contract AdEscrowTest {
 
         try advertiser.withdraw(escrow, address(token), 101e6) {
             revert("expected withdraw to fail");
+        } catch {}
+    }
+
+    function testWithdrawBySig() public {
+        _depositForRelayedAdvertiser(DEPOSIT);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory signature = _signWithdrawAuthorization(relayedAdvertiser, address(token), 400e6, relayedAdvertiser, 0, deadline);
+
+        escrow.withdrawBySig(relayedAdvertiser, address(token), 400e6, relayedAdvertiser, deadline, signature);
+
+        _assertEq(escrow.balances(relayedAdvertiser, address(token)), 600e6, "advertiser balance");
+        _assertEq(token.balanceOf(relayedAdvertiser), 400e6, "advertiser token balance");
+        _assertEq(escrow.nonces(relayedAdvertiser), 1, "withdraw nonce");
+    }
+
+    function testCannotReplayWithdrawBySig() public {
+        _depositForRelayedAdvertiser(DEPOSIT);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory signature = _signWithdrawAuthorization(relayedAdvertiser, address(token), 400e6, relayedAdvertiser, 0, deadline);
+
+        escrow.withdrawBySig(relayedAdvertiser, address(token), 400e6, relayedAdvertiser, deadline, signature);
+
+        try escrow.withdrawBySig(relayedAdvertiser, address(token), 400e6, relayedAdvertiser, deadline, signature) {
+            revert("expected replay to fail");
         } catch {}
     }
 
@@ -323,6 +351,30 @@ contract AdEscrowTest {
                 deadline
             )
         );
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("AdEscrow")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(escrow)
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ADVERTISER_PRIVATE_KEY, digest);
+        signature = abi.encodePacked(r, s, v);
+    }
+
+    function _signWithdrawAuthorization(
+        address user,
+        address tokenAddress,
+        uint256 amount,
+        address recipient,
+        uint256 nonce,
+        uint256 deadline
+    ) private returns (bytes memory signature) {
+        bytes32 structHash =
+            keccak256(abi.encode(WITHDRAW_TYPEHASH, user, tokenAddress, amount, recipient, nonce, deadline));
         bytes32 domainSeparator = keccak256(
             abi.encode(
                 EIP712_DOMAIN_TYPEHASH,

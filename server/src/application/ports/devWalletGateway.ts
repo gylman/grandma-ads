@@ -30,6 +30,15 @@ export type CreateCampaignAuthorization = {
   deadline: bigint;
 };
 
+export type WithdrawAuthorization = {
+  user: `0x${string}`;
+  token: `0x${string}`;
+  amount: bigint;
+  recipient: `0x${string}`;
+  nonce: bigint;
+  deadline: bigint;
+};
+
 export type TokenPermitAuthorization = {
   owner: `0x${string}`;
   spender: `0x${string}`;
@@ -45,6 +54,7 @@ export interface DevWalletGateway {
     wallet: DevWallet,
     input: {
       tokenAddress: `0x${string}`;
+      tokenName: string;
       chainId: number;
       authorization: TokenPermitAuthorization;
     },
@@ -57,12 +67,19 @@ export interface DevWalletGateway {
       authorization: CreateCampaignAuthorization;
     },
   ): Promise<`0x${string}`>;
+  signWithdrawAuthorization(
+    wallet: DevWallet,
+    input: {
+      verifyingContract: `0x${string}`;
+      chainId: number;
+      authorization: WithdrawAuthorization;
+    },
+  ): Promise<`0x${string}`>;
   getBalance(wallet: DevWallet): Promise<DevWalletBalance>;
   getMajorBalances(wallet: DevWallet): Promise<DevTokenBalance[]>;
-  mintMockUsdc(to: `0x${string}`, amount: bigint): Promise<`0x${string}`>;
-  approveEscrow(wallet: DevWallet, amount: bigint): Promise<`0x${string}`>;
-  deposit(wallet: DevWallet, amount: bigint): Promise<`0x${string}`>;
-  withdraw(wallet: DevWallet, amount: bigint): Promise<`0x${string}`>;
+  mintMockToken(tokenAddress: `0x${string}`, to: `0x${string}`, amount: bigint): Promise<`0x${string}`>;
+  approveEscrow(wallet: DevWallet, tokenAddress: `0x${string}`, amount: bigint): Promise<`0x${string}`>;
+  deposit(wallet: DevWallet, tokenAddress: `0x${string}`, amount: bigint): Promise<`0x${string}`>;
   createCampaignFromBalance(
     wallet: DevWallet,
     input: { posterWalletAddress: `0x${string}`; tokenAddress: `0x${string}`; amount: bigint; durationSeconds: bigint },

@@ -8,6 +8,7 @@ import {
   CreateOnchainCampaignBySigInput,
   CreateOnchainCampaignInput,
   DepositWithPermitInput,
+  WithdrawBySigInput,
 } from '../../../application/ports/blockchainGateway';
 import { adEscrowAbi } from './adEscrowAbi';
 
@@ -109,17 +110,43 @@ export function createViemBlockchainGateway(config: AppConfig): BlockchainGatewa
         args: [input.ownerWalletAddress, input.tokenAddress, input.amount, input.deadline, input.signature],
       });
 
-      return writer.writeContract(simulation.request);
+      const txHash = await writer.writeContract(simulation.request);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
     },
 
-    createCampaignFromBalance(input: CreateOnchainCampaignInput) {
+    async withdrawBySig(input: WithdrawBySigInput) {
       const writer = getWalletClient();
-      return writer.writeContract({
+      const simulation = await publicClient.simulateContract({
+        account,
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'withdrawBySig',
+        args: [
+          input.userWalletAddress,
+          input.tokenAddress,
+          input.amount,
+          input.recipientWalletAddress,
+          input.deadline,
+          input.signature,
+        ],
+      });
+
+      const txHash = await writer.writeContract(simulation.request);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
+    },
+
+    async createCampaignFromBalance(input: CreateOnchainCampaignInput) {
+      const writer = getWalletClient();
+      const txHash = await writer.writeContract({
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'createCampaignFromBalance',
         args: [input.posterWalletAddress, input.tokenAddress, input.amount, input.durationSeconds],
       });
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
     },
 
     async createCampaignFromBalanceBySig(input: CreateOnchainCampaignBySigInput) {
@@ -141,40 +168,47 @@ export function createViemBlockchainGateway(config: AppConfig): BlockchainGatewa
       });
 
       const txHash = await writer.writeContract(simulation.request);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
       return {
         onchainCampaignId: simulation.result,
         txHash,
       };
     },
 
-    startCampaign(campaignId: bigint) {
+    async startCampaign(campaignId: bigint) {
       const writer = getWalletClient();
-      return writer.writeContract({
+      const txHash = await writer.writeContract({
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'startCampaign',
         args: [campaignId],
       });
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
     },
 
-    completeCampaign(campaignId: bigint) {
+    async completeCampaign(campaignId: bigint) {
       const writer = getWalletClient();
-      return writer.writeContract({
+      const txHash = await writer.writeContract({
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'completeCampaign',
         args: [campaignId],
       });
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
     },
 
-    refundCampaign(campaignId: bigint) {
+    async refundCampaign(campaignId: bigint) {
       const writer = getWalletClient();
-      return writer.writeContract({
+      const txHash = await writer.writeContract({
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'refundCampaign',
         args: [campaignId],
       });
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
     },
   };
 

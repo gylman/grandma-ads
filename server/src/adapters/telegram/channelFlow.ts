@@ -2,9 +2,9 @@ import { TelegramBotContext } from "./context";
 import { fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
 
 export async function registerChannelFromText(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawInput: string): Promise<void> {
-  const telegramChannelUsername = rawInput.trim();
+  const telegramChannelUsername = normalizeChannelInput(rawInput);
   if (!/^@[a-zA-Z0-9_]{5,}$/.test(telegramChannelUsername)) {
-    await ctx.api.sendMessage(chatId, "Please send a valid channel username, for example @exampleChannel.");
+    await ctx.api.sendMessage(chatId, "Please send a valid channel link, for example https://t.me/exampleChannel.");
     return;
   }
 
@@ -13,10 +13,11 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
     return;
   }
 
-  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId);
+  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId, ctx.state.telegramUsernamesById.get(telegramUserId) ?? null);
   const user = await ctx.useCases.upsertUser({
     walletAddress: wallet.address,
     telegramUserId,
+    telegramUsername: ctx.state.telegramUsernamesById.get(telegramUserId) ?? null,
   });
 
   const registration = await ctx.useCases.registerChannel({
@@ -26,7 +27,7 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
   const channel = registration.channel;
 
   if (registration.status === "ALREADY_VERIFIED") {
-    await ctx.api.sendMessage(chatId, `This channel is already verified: @${channel.telegramChannelUsername}`);
+    await ctx.api.sendMessage(chatId, ["This channel is already verified:", channelLink(channel.telegramChannelUsername)].join("\n"));
     return;
   }
 
@@ -36,11 +37,16 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
     await ctx.api.sendMessage(
       chatId,
       [
-        `Channel registration is already pending for ${telegramChannelUsername}.`,
-        `Verification code: ${channel.verificationCode}`,
+        "Channel registration is already pending for:",
+        channelLink(telegramChannelUsername),
         "",
-        "Post this exact code in the channel, then submit the public post URL.",
+        "Verification code:",
+        `<code>${channel.verificationCode}</code>`,
+        "",
+        "Post this exact code in the channel.",
+        "I will verify it there and delete the verification post right away.",
       ].join("\n"),
+      { parseMode: "HTML" },
     );
     return;
   }
@@ -48,11 +54,16 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
   await ctx.api.sendMessage(
     chatId,
     [
-      `Channel registration created for ${telegramChannelUsername}.`,
-      `Verification code: ${channel.verificationCode}`,
+      "Channel registration created for:",
+      channelLink(telegramChannelUsername),
       "",
-      "Post this exact code in the channel, then submit the public post URL (verification step wiring is next).",
+      "Verification code:",
+      `<code>${channel.verificationCode}</code>`,
+      "",
+      "Post this exact code in the channel.",
+      "I will verify it there and delete the verification post right away.",
     ].join("\n"),
+    { parseMode: "HTML" },
   );
 }
 
@@ -62,7 +73,7 @@ export async function verifyChannelFromPostUrl(ctx: TelegramBotContext, chatId: 
     return false;
   }
 
-  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId);
+  const wallet = await ctx.useCases.ensureDevWallet(telegramUserId, ctx.state.telegramUsernamesById.get(telegramUserId) ?? null);
   const user = await ctx.useCases.getUserByWallet(wallet.address);
   if (!user) {
     await ctx.api.sendMessage(chatId, "Please create a dev wallet first with /dev_create_wallet.");
@@ -110,6 +121,18 @@ export async function verifyChannelFromPostUrl(ctx: TelegramBotContext, chatId: 
 
   await ctx.useCases.verifyChannel(pendingChannel.id, postUrl);
   ctx.state.pendingChannelVerification.delete(chatId);
-  await ctx.api.sendMessage(chatId, `Channel verified: @${expectedChannel}`);
+  await ctx.api.sendMessage(chatId, ["Channel verified:", channelLink(expectedChannel), "", "You will be notified if someone wants to run ads on your channel."].join("\n"));
   return true;
+}
+
+function normalizeChannelInput(rawInput: string): string {
+  const value = rawInput.trim();
+  const match = value.match(/(?:https?:\/\/)?t\.me\/([a-zA-Z0-9_]{5,})/i);
+  if (match) return `@${match[1]}`;
+  return value.startsWith("@") ? value : `@${value}`;
+}
+
+function channelLink(username: string | null | undefined): string {
+  if (!username) return "https://t.me/unknown";
+  return `https://t.me/${username.replace(/^@/, "")}`;
 }

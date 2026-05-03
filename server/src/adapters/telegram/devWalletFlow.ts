@@ -1,9 +1,9 @@
-import { formatDevUsdcAmount } from "../blockchain/viem/devWalletGateway";
+import { formatDevTokenAmount } from "../blockchain/viem/devWalletGateway";
 import { TelegramBotContext, sendPromptForReply } from "./context";
 import { balanceSignature, formatMajorBalances, friendlyBalanceLookupError } from "./formatters";
 import { checkBalanceButton, devWalletButtons } from "./keyboards";
 import { escapeHtml } from "./richText";
-import { parseUsdcAmountInput } from "./tokenUtils";
+import { parseDevTokenAmountInput } from "./tokenUtils";
 
 export async function sendDevWalletOverview(ctx: TelegramBotContext, chatId: number, telegramUserId: string): Promise<boolean> {
   const wallet = await ctx.useCases.getDevWallet(telegramUserId);
@@ -63,7 +63,7 @@ export function createBalanceMonitor(ctx: TelegramBotContext): { pollKnownBalanc
 }
 
 export async function promptMint(ctx: TelegramBotContext, chatId: number): Promise<void> {
-  await sendPromptForReply(ctx, chatId, "Reply with amount and token.\nExample: 1000 USDC", "DEV_MINT", {
+  await sendPromptForReply(ctx, chatId, "Reply with amount and token.\nExample: 1000 USDC or 1000 USDT", "DEV_MINT", {
     placeholder: "1000 USDC",
   });
 }
@@ -72,7 +72,7 @@ export async function promptDeposit(ctx: TelegramBotContext, chatId: number): Pr
   await sendPromptForReply(
     ctx,
     chatId,
-    "Reply with amount and token to deposit.\nExample: 100 USDC",
+    "Reply with amount and token to deposit.\nExample: 100 USDC or 100 USDT",
     "DEV_DEPOSIT",
     { placeholder: "100 USDC" },
   );
@@ -82,7 +82,7 @@ export async function promptWithdraw(ctx: TelegramBotContext, chatId: number): P
   await sendPromptForReply(
     ctx,
     chatId,
-    "Reply with amount and token to withdraw.\nExample: 25 USDC",
+    "Reply with amount and token to withdraw.\nExample: 25 USDC or 25 USDT",
     "DEV_WITHDRAW",
     { placeholder: "25 USDC" },
   );
@@ -106,11 +106,11 @@ export async function sendDevBalanceWithActions(ctx: TelegramBotContext, chatId:
 }
 
 export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
-  const amount = parseUsdcAmountInput(rawAmount);
-  const result = await ctx.useCases.mintDevWalletMockUsdc(telegramUserId, amount);
+  const { amount, tokenSymbol } = parseDevTokenAmountInput(rawAmount);
+  const result = await ctx.useCases.mintDevWalletMockToken(telegramUserId, tokenSymbol, amount);
   await ctx.api.sendMessage(
     chatId,
-    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevUsdcAmount(amount))} USDC\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n<b>Tx:</b> <code>${escapeHtml(result.txHash)}</code>`,
+    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)}\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n<b>Tx:</b> <code>${escapeHtml(result.txHash)}</code>`,
     {
       replyMarkup: checkBalanceButton(),
       parseMode: "HTML",
@@ -119,13 +119,13 @@ export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, tele
 }
 
 export async function depositMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
-  const amount = parseUsdcAmountInput(rawAmount);
-  const result = await ctx.useCases.depositDevWalletMockUsdc(telegramUserId, amount);
-  await ctx.api.sendMessage(chatId, [`Deposited ${formatDevUsdcAmount(amount)} mock USDC into escrow with a gasless relay.`, `Sponsored tx: ${result.txHash}`].join("\n"));
+  const { amount, tokenSymbol } = parseDevTokenAmountInput(rawAmount);
+  const result = await ctx.useCases.depositDevWalletToken(telegramUserId, tokenSymbol, amount);
+  await ctx.api.sendMessage(chatId, [`Deposited ${formatDevTokenAmount(amount, result.token.decimals)} mock ${result.token.symbol} into escrow with a gasless relay.`, `Sponsored tx: ${result.txHash}`].join("\n"));
 }
 
 export async function withdrawMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
-  const amount = parseUsdcAmountInput(rawAmount);
-  const result = await ctx.useCases.withdrawDevWalletMockUsdc(telegramUserId, amount);
-  await ctx.api.sendMessage(chatId, `Withdrew ${formatDevUsdcAmount(amount)} mock USDC from escrow.\nTx: ${result.txHash}`);
+  const { amount, tokenSymbol } = parseDevTokenAmountInput(rawAmount);
+  const result = await ctx.useCases.withdrawDevWalletToken(telegramUserId, tokenSymbol, amount);
+  await ctx.api.sendMessage(chatId, `Withdrew ${formatDevTokenAmount(amount, result.token.decimals)} mock ${result.token.symbol} from escrow.\nTx: ${result.txHash}`);
 }

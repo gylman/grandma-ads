@@ -96,7 +96,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
     },
 
     async signTokenPermitAuthorization(wallet, input): Promise<`0x${string}`> {
-      const typedData = createTokenPermitTypedData(input.tokenAddress, input.chainId, input.authorization);
+      const typedData = createTokenPermitTypedData(input.tokenAddress, input.tokenName, input.chainId, input.authorization);
 
       if (wallet.provider === 'dynamic') {
         const authenticatedClient = await authenticatedDynamicClient(config);
@@ -190,26 +190,26 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       ];
     },
 
-    mintMockUsdc(to: `0x${string}`, amount: bigint) {
-      assertConfigured(config);
+    mintMockToken(tokenAddress: `0x${string}`, to: `0x${string}`, amount: bigint) {
+      assertRpcConfigured(config);
       if (!config.devWalletMinterPrivateKey) {
         throw new Error('DEV_WALLET_MINTER_PRIVATE_KEY is required for dev minting');
       }
 
       const account = privateKeyToAccount(config.devWalletMinterPrivateKey as `0x${string}`);
       return writeLocalContract(account, {
-        address: config.usdcTokenAddress as `0x${string}`,
+        address: tokenAddress,
         abi: mockUsdcAbi,
         functionName: 'mint',
         args: [to, amount],
       });
     },
 
-    approveEscrow(wallet: DevWallet, amount: bigint) {
+    approveEscrow(wallet: DevWallet, tokenAddress: `0x${string}`, amount: bigint) {
       assertConfigured(config);
       if (wallet.provider === 'dynamic') {
         return signAndSendContract(wallet, {
-          address: config.usdcTokenAddress as `0x${string}`,
+          address: tokenAddress,
           abi: erc20Abi,
           functionName: 'approve',
           args: [config.escrowContractAddress as `0x${string}`, amount],
@@ -218,21 +218,21 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
 
       const account = localAccount(wallet);
       return writeLocalContract(account, {
-        address: config.usdcTokenAddress as `0x${string}`,
+        address: tokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
         args: [config.escrowContractAddress as `0x${string}`, amount],
       });
     },
 
-    deposit(wallet: DevWallet, amount: bigint) {
+    deposit(wallet: DevWallet, tokenAddress: `0x${string}`, amount: bigint) {
       assertConfigured(config);
       if (wallet.provider === 'dynamic') {
         return signAndSendContract(wallet, {
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
           functionName: 'deposit',
-          args: [config.usdcTokenAddress as `0x${string}`, amount],
+          args: [tokenAddress, amount],
         });
       }
 
@@ -241,18 +241,18 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'deposit',
-        args: [config.usdcTokenAddress as `0x${string}`, amount],
+        args: [tokenAddress, amount],
       });
     },
 
-    withdraw(wallet: DevWallet, amount: bigint) {
+    withdraw(wallet: DevWallet, tokenAddress: `0x${string}`, amount: bigint) {
       assertConfigured(config);
       if (wallet.provider === 'dynamic') {
         return signAndSendContract(wallet, {
           address: config.escrowContractAddress as `0x${string}`,
           abi: adEscrowAbi,
           functionName: 'withdraw',
-          args: [config.usdcTokenAddress as `0x${string}`, amount],
+          args: [tokenAddress, amount],
         });
       }
 
@@ -261,7 +261,7 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
         address: config.escrowContractAddress as `0x${string}`,
         abi: adEscrowAbi,
         functionName: 'withdraw',
-        args: [config.usdcTokenAddress as `0x${string}`, amount],
+        args: [tokenAddress, amount],
       });
     },
 
@@ -363,12 +363,13 @@ function createCampaignAuthorizationTypedData(
 
 function createTokenPermitTypedData(
   tokenAddress: `0x${string}`,
+  tokenName: string,
   chainId: number,
   authorization: TokenPermitAuthorization,
 ) {
   return {
     domain: {
-      name: 'Mock USDC',
+      name: tokenName,
       version: '1',
       chainId,
       verifyingContract: tokenAddress,
@@ -418,6 +419,20 @@ function configuredMajorTokens(config: AppConfig) {
       ...token,
       address: token.address as `0x${string}`,
     }));
+}
+
+export function configuredTokenBySymbol(config: AppConfig, symbol: string) {
+  return configuredMajorTokens(config).find((token) => token.symbol === symbol.toUpperCase()) ?? null;
+}
+
+export function permitTokenNameForSymbol(symbol: string): string {
+  switch (symbol.toUpperCase()) {
+    case 'USDT':
+      return 'Mock USDT';
+    case 'USDC':
+    default:
+      return 'Mock USDC';
+  }
 }
 
 function localAccount(wallet: DevWallet) {

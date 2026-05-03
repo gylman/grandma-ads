@@ -30,6 +30,10 @@ export function createAppUseCases(dependencies: {
   devWallets: DevWalletRepository;
   devWalletGateway: DevWalletGateway;
   tokenDecimalsByAddress?: Record<string, number>;
+  usdcTokenAddress?: string;
+  usdtTokenAddress?: string;
+  daiTokenAddress?: string;
+  wbtcTokenAddress?: string;
   escrowContractAddress: `0x${string}`;
   chainId: number;
   ensRootName: string;
@@ -39,6 +43,22 @@ export function createAppUseCases(dependencies: {
   const tokenDecimalsByAddress = dependencies.tokenDecimalsByAddress ?? {};
   const ensRootName = dependencies.ensRootName;
   const verifierEnsName = `verifier.${ensRootName}`;
+  const majorTokens = [
+    { symbol: 'USDC', address: dependencies.usdcTokenAddress ?? '', decimals: 6 },
+    { symbol: 'USDT', address: dependencies.usdtTokenAddress ?? '', decimals: 6 },
+    { symbol: 'DAI', address: dependencies.daiTokenAddress ?? '', decimals: 18 },
+    { symbol: 'WBTC', address: dependencies.wbtcTokenAddress ?? '', decimals: 8 },
+  ];
+
+  function resolveMajorTokenBySymbol(symbol: string) {
+    const normalized = symbol.toUpperCase();
+    const token = majorTokens.find((candidate) => candidate.symbol === normalized && /^0x[a-fA-F0-9]{40}$/.test(candidate.address));
+    if (!token) return null;
+    return {
+      ...token,
+      address: token.address as `0x${string}`,
+    };
+  }
 
   async function ensureDevWallet(telegramUserId: string, telegramUsername?: string | null) {
     const existing = await devWallets.findByTelegramUserId(telegramUserId);
@@ -727,35 +747,40 @@ export function createAppUseCases(dependencies: {
       return { wallet, message, signature };
     },
 
-    async mintDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
+    async mintDevWalletMockToken(telegramUserId: string, tokenSymbol: string, amount: bigint) {
       const wallet = await ensureDevWallet(telegramUserId);
-      const txHash = await devWalletGateway.mintMockUsdc(wallet.address, amount);
-      return { wallet, txHash };
+      const token = resolveMajorTokenBySymbol(tokenSymbol);
+      if (!token) {
+        throw new Error(`${tokenSymbol.toUpperCase()} is not configured on the server yet.`);
+      }
+      const txHash = await devWalletGateway.mintMockToken(token.address, wallet.address, amount);
+      return { wallet, token, txHash };
     },
 
-    async depositDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
+    async depositDevWalletToken(telegramUserId: string, tokenSymbol: string, amount: bigint) {
       const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
 
       const balances = await devWalletGateway.getMajorBalances(wallet);
-      const usdcBalance = balances.find((balance) => balance.symbol === 'USDC');
-      if (!usdcBalance) {
-        throw new Error('USDC is not configured on the server yet.');
+      const tokenBalance = balances.find((balance) => balance.symbol === tokenSymbol.toUpperCase());
+      if (!tokenBalance?.address) {
+        throw new Error(`${tokenSymbol.toUpperCase()} is not configured on the server yet.`);
       }
-      if (usdcBalance.walletBalance < amount) {
+      if (tokenBalance.walletBalance < amount) {
         throw new Error(
-          `You do not have enough USDC in the wallet. Needed ${formatTokenAmount(amount, usdcBalance.decimals)}, wallet has ${formatTokenAmount(
-            usdcBalance.walletBalance,
-            usdcBalance.decimals,
+          `You do not have enough ${tokenBalance.symbol} in the wallet. Needed ${formatTokenAmount(amount, tokenBalance.decimals)}, wallet has ${formatTokenAmount(
+            tokenBalance.walletBalance,
+            tokenBalance.decimals,
           )}.`,
         );
       }
 
       try {
-        const nonce = await blockchain.getTokenPermitNonce(usdcBalance.address!, wallet.address);
+        const nonce = await blockchain.getTokenPermitNonce(tokenBalance.address, wallet.address);
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60);
         const signature = await devWalletGateway.signTokenPermitAuthorization(wallet, {
-          tokenAddress: usdcBalance.address!,
+          tokenAddress: tokenBalance.address,
+          tokenName: permitTokenName(tokenBalance.symbol),
           chainId: dependencies.chainId,
           authorization: {
             owner: wallet.address,
@@ -767,12 +792,12 @@ export function createAppUseCases(dependencies: {
         });
         const txHash = await blockchain.depositWithPermit({
           ownerWalletAddress: wallet.address,
-          tokenAddress: usdcBalance.address!,
+          tokenAddress: tokenBalance.address,
           amount,
           deadline,
           signature,
         });
-        return { wallet, txHash, signature, deadline };
+        return { wallet, token: tokenBalance, txHash, signature, deadline };
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
         if (message.includes('function "depositWithPermit"') || message.includes('function "nonces" reverted')) {
@@ -784,27 +809,27 @@ export function createAppUseCases(dependencies: {
         if (message.includes('InsufficientAllowance') || message.includes('SafeERC20CallFailed')) {
           throw new Error('The token permit was not accepted by the current token contract. Redeploy the latest local contracts and try again.');
         }
-        throw new Error('I could not relay that USDC deposit to escrow. Please try again.');
+        throw new Error(`I could not relay that ${tokenBalance.symbol} deposit to escrow. Please try again.`);
       }
     },
 
-    async withdrawDevWalletMockUsdc(telegramUserId: string, amount: bigint) {
+    async withdrawDevWalletToken(telegramUserId: string, tokenSymbol: string, amount: bigint) {
       const wallet = await devWallets.findByTelegramUserId(telegramUserId);
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
 
       const balances = await devWalletGateway.getMajorBalances(wallet);
       const nativeBalance = balances.find((balance) => balance.isNative)?.walletBalance ?? 0n;
-      const usdcBalance = balances.find((balance) => balance.symbol === 'USDC');
-      const availableInEscrow = usdcBalance?.escrowBalance ?? 0n;
+      const tokenBalance = balances.find((balance) => balance.symbol === tokenSymbol.toUpperCase());
+      const availableInEscrow = tokenBalance?.escrowBalance ?? 0n;
 
-      if (!usdcBalance) {
-        throw new Error('USDC is not configured on the server yet.');
+      if (!tokenBalance?.address) {
+        throw new Error(`${tokenSymbol.toUpperCase()} is not configured on the server yet.`);
       }
       if (availableInEscrow < amount) {
         throw new Error(
-          `You do not have enough available USDC in escrow. Needed ${formatTokenAmount(amount, usdcBalance.decimals)}, available ${formatTokenAmount(
+          `You do not have enough available ${tokenBalance.symbol} in escrow. Needed ${formatTokenAmount(amount, tokenBalance.decimals)}, available ${formatTokenAmount(
             availableInEscrow,
-            usdcBalance.decimals,
+            tokenBalance.decimals,
           )}.`,
         );
       }
@@ -813,8 +838,8 @@ export function createAppUseCases(dependencies: {
       }
 
       try {
-        const txHash = await devWalletGateway.withdraw(wallet, amount);
-        return { wallet, txHash };
+        const txHash = await devWalletGateway.withdraw(wallet, tokenBalance.address, amount);
+        return { wallet, token: tokenBalance, txHash };
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
         if (message.includes('insufficient funds')) {
@@ -823,7 +848,7 @@ export function createAppUseCases(dependencies: {
         if (message.includes('Cannot infer a transaction type')) {
           throw new Error('I could not prepare the withdrawal transaction. Restart the server and try /dev_withdraw again.');
         }
-        throw new Error('I could not withdraw that USDC from escrow. Please try again.');
+        throw new Error(`I could not withdraw that ${tokenBalance.symbol} from escrow. Please try again.`);
       }
     },
   };
@@ -842,6 +867,16 @@ function formatTokenAmount(value: bigint, decimals: number): string {
 
   const paddedFraction = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
   return `${whole.toString()}.${paddedFraction}`;
+}
+
+function permitTokenName(symbol: string): string {
+  switch (symbol.toUpperCase()) {
+    case 'USDT':
+      return 'Mock USDT';
+    case 'USDC':
+    default:
+      return 'Mock USDC';
+  }
 }
 
 function pendingAdvertiserUserId(telegramUserId: string): string {

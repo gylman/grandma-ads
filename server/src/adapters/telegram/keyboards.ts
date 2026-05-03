@@ -87,9 +87,9 @@ export function telegramCommands(custodialDevMode: boolean): Array<{ command: st
     ...commands,
     { command: "dev_create_wallet", description: "Create or show dev wallet" },
     { command: "dev_balance", description: "Show dev balances" },
-    { command: "dev_mint", description: "Mint mock USDC" },
-    { command: "dev_deposit", description: "Deposit mock USDC to escrow" },
-    { command: "dev_withdraw", description: "Withdraw mock USDC from escrow" },
+    { command: "dev_mint", description: "Mint mock USDC or USDT" },
+    { command: "dev_deposit", description: "Deposit mock USDC or USDT to escrow" },
+    { command: "dev_withdraw", description: "Withdraw mock USDC or USDT from escrow" },
     { command: "dev_clear", description: "Clear your dev wallet and campaigns" },
     { command: "sign", description: "Sign a test message" },
   ];

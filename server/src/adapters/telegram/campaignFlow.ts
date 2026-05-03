@@ -13,6 +13,7 @@ import { TelegramInlineKeyboardButton, TelegramMessage, TelegramReplyMarkup } fr
 
 export async function canShowSendOfferButton(ctx: TelegramBotContext, telegramUserId: string, campaign: Campaign): Promise<boolean> {
   if (!["DRAFT", "AWAITING_FUNDS", "FUNDED"].includes(campaign.status)) return false;
+  if (campaign.status === "FUNDED") return true;
 
   const wallet = await ctx.useCases.getDevWallet(telegramUserId);
   if (!wallet) return false;
@@ -30,12 +31,15 @@ export async function canShowSendOfferButton(ctx: TelegramBotContext, telegramUs
 }
 
 export async function buildDraftActionButtons(ctx: TelegramBotContext, telegramUserId: string, campaign: Campaign): Promise<TelegramReplyMarkup> {
-  const rows: TelegramInlineKeyboardButton[][] = [[{ text: "Revise Copy", callback_data: `campaign:revise:${campaign.id}` }]];
-  if (await canShowSendOfferButton(ctx, telegramUserId, campaign)) {
-    rows.push([{ text: "Send Offer", callback_data: `campaign:send_offer:${campaign.id}` }]);
-  }
+  void ctx;
+  void telegramUserId;
 
-  return { inline_keyboard: rows };
+  return {
+    inline_keyboard: [
+      [{ text: "Revise Copy", callback_data: `campaign:revise:${campaign.id}` }],
+      [{ text: "Send Offer", callback_data: `campaign:send_offer:${campaign.id}` }],
+    ],
+  };
 }
 
 export async function verifyCampaignPostFromUrl(ctx: TelegramBotContext, chatId: number, telegramUserId: string, postUrl: string): Promise<boolean> {
@@ -153,8 +157,6 @@ export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatI
       "Campaign draft created.",
       "",
       formatCampaignSummary(result.campaign),
-      "",
-      "Recommended copy is in the next message so it is easy to copy on mobile.",
     ].join("\n"),
   );
   rememberCampaignMessage(ctx.state, chatId, draftMessage, result.campaign.id, "DRAFT");
@@ -363,10 +365,7 @@ export async function rejectCounterProposal(ctx: TelegramBotContext, chatId: num
 
 export async function reviseCampaignCopy(ctx: TelegramBotContext, chatId: number, telegramUserId: string, campaignId: string, instruction: string | null): Promise<void> {
   const result = await ctx.useCases.reviseCampaignCopy(campaignId, instruction);
-  const revisionMessage = await ctx.api.sendMessage(
-    chatId,
-    [`Updated copy for ${result.campaign.id}.`, "", "The new copy is in the next message so it is easy to copy on mobile.", `Why: ${result.suggestion.rationale}`].join("\n"),
-  );
+  const revisionMessage = await ctx.api.sendMessage(chatId, `Updated copy for ${result.campaign.id}.`);
   rememberCampaignMessage(ctx.state, chatId, revisionMessage, result.campaign.id, "DRAFT");
   if (result.campaign.approvedText) {
     const actions = await buildDraftActionButtons(ctx, telegramUserId, result.campaign);

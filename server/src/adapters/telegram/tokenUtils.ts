@@ -14,19 +14,22 @@ export function resolveRequestedToken(rawInput: string, config: AppConfig): { sy
   return { symbol: requested, address };
 }
 
-export function parseUsdcAmountInput(value: string): bigint {
+export function parseDevTokenAmountInput(value: string): { amount: bigint; tokenSymbol: string } {
   const match = value.trim().match(/^([0-9]+(?:\.[0-9]{1,6})?)\s*([A-Za-z]*)$/);
   if (!match) {
     throw new Error('Amount format should look like "100 USDC".');
   }
 
   const amount = match[1];
-  const token = (match[2] ?? "").toUpperCase();
-  if (token && token !== "USDC") {
-    throw new Error("Only USDC is supported in this flow right now. Use format like 100 USDC.");
+  const tokenSymbol = ((match[2] ?? "").toUpperCase() || "USDC");
+  if (!["USDC", "USDT"].includes(tokenSymbol)) {
+    throw new Error('Use USDC or USDT in this flow, like "100 USDC" or "100 USDT".');
   }
 
-  return parseDevUsdcAmount(amount);
+  return {
+    amount: parseDevUsdcAmount(amount),
+    tokenSymbol,
+  };
 }
 
 export function parseTokenAmountForButton(value: string, decimals: number): bigint {

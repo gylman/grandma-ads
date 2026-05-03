@@ -39,6 +39,26 @@ export function createTelegramApi(botToken: string) {
     });
   }
 
+  async function sendPhoto(
+    chatId: number | string,
+    photo: string,
+    options?: {
+      caption?: string;
+      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup;
+      replyToMessageId?: number;
+      parseMode?: "HTML" | "MarkdownV2";
+    },
+  ): Promise<TelegramMessage> {
+    return await request<TelegramMessage>("sendPhoto", {
+      chat_id: chatId,
+      photo,
+      caption: options?.caption,
+      reply_markup: options?.replyMarkup,
+      reply_to_message_id: options?.replyToMessageId,
+      parse_mode: options?.parseMode,
+    });
+  }
+
   async function answerCallbackQuery(callbackQueryId: string): Promise<void> {
     await request<boolean>("answerCallbackQuery", {
       callback_query_id: callbackQueryId,
@@ -55,6 +75,7 @@ export function createTelegramApi(botToken: string) {
   return {
     request,
     sendMessage,
+    sendPhoto,
     answerCallbackQuery,
     deleteMessage,
   };

@@ -4,6 +4,12 @@ export function getMessageText(message: TelegramMessage): string | null {
   return message.text ?? message.caption ?? null;
 }
 
+export function getLargestPhotoFileId(message: TelegramMessage): string | null {
+  const photos = message.photo;
+  if (!photos || photos.length === 0) return null;
+  return photos[photos.length - 1]?.file_id ?? null;
+}
+
 export function isTelegramPostUrl(value: string): boolean {
   return /^https?:\/\/t\.me\/[A-Za-z0-9_]+\/\d+$/i.test(value.trim());
 }

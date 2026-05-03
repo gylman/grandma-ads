@@ -31,12 +31,12 @@ import {
   withdrawMockUsdc,
 } from "./devWalletFlow";
 import { mainMenuButtons } from "./keyboards";
-import { isTelegramPostUrl } from "./postUtils";
+import { getLargestPhotoFileId, getMessageText, isTelegramPostUrl } from "./postUtils";
 import { campaignContextFromReply, campaignIdFromReply, clearChatState } from "./state";
 import { TelegramMessage } from "./types";
 
 export async function handleMessage(ctx: TelegramBotContext, message: TelegramMessage): Promise<void> {
-  const text = message.text?.trim() ?? "";
+  const text = getMessageText(message)?.trim() ?? "";
   const chatId = message.chat.id;
   const telegramUserId = String(message.from?.id ?? chatId);
   if (message.from?.username) {
@@ -49,7 +49,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
     await runDevCommand(ctx, chatId, async () => {
       if (pendingPrompt.type === "CAMPAIGN_DRAFT") {
         const combinedText = pendingPrompt.seedText ? `${pendingPrompt.seedText}\n${text}` : text;
-        await createCampaignDraftFromText(ctx, chatId, telegramUserId, combinedText);
+        await createCampaignDraftFromText(ctx, chatId, telegramUserId, combinedText, getLargestPhotoFileId(message));
         return;
       }
       if (pendingPrompt.type === "REGISTER_CHANNEL") {
@@ -133,7 +133,7 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
       return;
     }
 
-    await createCampaignDraftFromText(ctx, chatId, telegramUserId, details);
+    await createCampaignDraftFromText(ctx, chatId, telegramUserId, details, getLargestPhotoFileId(message));
     return;
   }
 

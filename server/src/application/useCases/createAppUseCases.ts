@@ -317,6 +317,7 @@ export function createAppUseCases(dependencies: {
       telegramUsername?: string | null;
       tokenAddress: string;
       message: string;
+      requestedImageFileId?: string | null;
     }) {
       const recommendation = await agent.analyzeCampaignRequest(input.message);
       if (!recommendation.safety.allowed) {
@@ -367,6 +368,7 @@ export function createAppUseCases(dependencies: {
         amount: recommendation.intake.amount ?? '',
         durationSeconds: recommendation.intake.durationSeconds ?? 0,
         requestedText: recommendation.intake.adText ?? input.message,
+        requestedImageFileId: input.requestedImageFileId ?? null,
         ensLabel: identity.ensLabel,
         ensName: identity.ensName,
       });

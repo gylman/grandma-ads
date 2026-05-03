@@ -50,6 +50,7 @@ export function createCampaign(input: {
   durationSeconds: number;
   targetTelegramChannelUsername?: string | null;
   requestedText?: string | null;
+  requestedImageFileId?: string | null;
   requestedImageUrl?: string | null;
   requestedImageHash?: string | null;
   ensName?: string | null;
@@ -74,7 +75,7 @@ export function createCampaign(input: {
     amount: input.amount,
     durationSeconds: input.durationSeconds,
     requestedText: input.requestedText ?? null,
-    requestedImageFileId: null,
+    requestedImageFileId: input.requestedImageFileId ?? null,
     requestedImageUrl: input.requestedImageUrl ?? null,
     requestedImageHash: input.requestedImageHash ?? null,
     approvedText: input.requestedText ?? null,

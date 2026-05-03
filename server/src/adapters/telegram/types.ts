@@ -8,12 +8,20 @@ export type TelegramUser = {
   username?: string;
 };
 
+export type TelegramPhotoSize = {
+  file_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+};
+
 export type TelegramMessage = {
   message_id: number;
   chat: TelegramChat;
   from?: TelegramUser;
   text?: string;
   caption?: string;
+  photo?: TelegramPhotoSize[];
   reply_to_message?: TelegramMessage;
 };
 

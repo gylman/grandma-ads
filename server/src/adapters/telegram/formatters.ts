@@ -2,10 +2,17 @@ import { AppUseCases } from "../../application/useCases/createAppUseCases";
 import { Campaign } from "../../domain/types";
 import { formatDevTokenAmount } from "../blockchain/viem/devWalletGateway";
 
+export function formatCampaignReference(campaign: Pick<Campaign, "onchainCampaignId">): string {
+  return campaign.onchainCampaignId ? `#${campaign.onchainCampaignId}` : "Draft";
+}
+
+export function formatCampaignLabel(campaign: Pick<Campaign, "onchainCampaignId">): string {
+  return campaign.onchainCampaignId ? `Ad ${formatCampaignReference(campaign)}` : "Draft ad";
+}
+
 export function formatCampaignSummary(campaign: Campaign): string {
   return [
-    `${campaign.id}: ${campaign.amount} for ${campaign.targetTelegramChannelUsername ?? "no channel"}`,
-    campaign.ensName ? `ENS: ${campaign.ensName}` : null,
+    `${formatCampaignLabel(campaign)}: ${campaign.amount} for ${campaign.targetTelegramChannelUsername ?? "no channel"}`,
     `Token: ${campaign.tokenAddress}`,
     `Duration: ${formatDuration(campaign.durationSeconds)}`,
     `Status: ${campaign.status}`,

@@ -1,4 +1,5 @@
 import { TelegramBotContext } from "./context";
+import { formatCampaignLabel } from "./formatters";
 import { getMessageText } from "./postUtils";
 import { TelegramMessage } from "./types";
 
@@ -32,7 +33,7 @@ export async function handleChannelPost(ctx: TelegramBotContext, message: Telegr
   const advertiser = await ctx.useCases.getUserByWallet(result.campaign.advertiserWalletAddress);
   const poster = result.campaign.posterWalletAddress ? await ctx.useCases.getUserByWallet(result.campaign.posterWalletAddress) : null;
   const notice = [
-    `Campaign ${result.campaign.id} changed after it was active.`,
+    `${formatCampaignLabel(result.campaign)} changed after it was active.`,
     result.result.reason ?? "The post no longer matches the approved ad.",
     result.txHash ? `Refund tx: ${result.txHash}` : "Refund transaction was not sent because there is no on-chain campaign id.",
   ].join("\n");

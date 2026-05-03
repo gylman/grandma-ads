@@ -1,6 +1,6 @@
 import { Campaign } from "../../domain/types";
 import { TelegramBotContext } from "./context";
-import { formatDuration } from "./formatters";
+import { formatCampaignLabel, formatDuration } from "./formatters";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
 
 export function createFinalSettlementWorker(ctx: TelegramBotContext): { pollDueCampaigns(): Promise<void> } {
@@ -85,7 +85,7 @@ function finalSettlementMessage(
 ): string {
   if (outcome.settlement === "COMPLETED") {
     return [
-      "Campaign completed.",
+      `${formatCampaignLabel(campaign)} completed.`,
       `The post stayed live for ${formatDuration(campaign.durationSeconds)}.`,
       "The locked funds are now available to the publisher in escrow.",
       "I deleted the campaign post from the channel.",
@@ -98,7 +98,7 @@ function finalSettlementMessage(
 
   if (outcome.settlement === "REFUNDED") {
     return [
-      "Campaign refunded.",
+      `${formatCampaignLabel(campaign)} refunded.`,
       outcome.reason ?? "The final check did not pass.",
       "The locked funds were returned to the advertiser's available escrow balance.",
       outcome.txHash ? `Refund tx: ${outcome.txHash}` : null,
@@ -109,7 +109,7 @@ function finalSettlementMessage(
   }
 
   return [
-    "Campaign final check failed.",
+    `${formatCampaignLabel(campaign)} final check failed.`,
     outcome.reason ?? "The final check did not pass.",
     "I could not send an on-chain refund because this campaign has no on-chain campaign id.",
   ].join("\n");

@@ -14,6 +14,7 @@ export type CreateDraftCampaignInput = {
   durationSeconds: number;
   targetTelegramChannelUsername?: string | null;
   requestedText?: string | null;
+  requestedImageFileId?: string | null;
   requestedImageUrl?: string | null;
   requestedImageHash?: string | null;
   ensName?: string | null;

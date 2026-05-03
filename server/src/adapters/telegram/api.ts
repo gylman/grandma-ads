@@ -1,4 +1,4 @@
-import { TelegramForceReplyMarkup, TelegramMessage, TelegramReplyMarkup, TelegramResponse } from "./types";
+import { TelegramForceReplyMarkup, TelegramMessage, TelegramReplyKeyboardMarkup, TelegramReplyMarkup, TelegramResponse } from "./types";
 
 export type TelegramApi = ReturnType<typeof createTelegramApi>;
 
@@ -24,7 +24,7 @@ export function createTelegramApi(botToken: string) {
     chatId: number | string,
     text: string,
     options?: {
-      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup;
+      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup | TelegramReplyKeyboardMarkup;
       replyToMessageId?: number;
       parseMode?: "HTML" | "MarkdownV2";
     },
@@ -44,7 +44,7 @@ export function createTelegramApi(botToken: string) {
     photo: string,
     options?: {
       caption?: string;
-      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup;
+      replyMarkup?: TelegramReplyMarkup | TelegramForceReplyMarkup | TelegramReplyKeyboardMarkup;
       replyToMessageId?: number;
       parseMode?: "HTML" | "MarkdownV2";
     },

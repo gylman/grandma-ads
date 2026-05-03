@@ -1,0 +1,311 @@
+.app-shell {
+  min-height: 100svh;
+  padding: 32px;
+  color: #172019;
+  background: #f7f8f4;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1180px;
+  margin: 0 auto 20px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #49745d;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  max-width: 780px;
+  font-size: 38px;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+button {
+  min-height: 40px;
+  border: 1px solid #1f3c2b;
+  border-radius: 6px;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 700;
+  color: #ffffff;
+  background: #1f3c2b;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+input,
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cfd7ca;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  color: #172019;
+  background: #ffffff;
+}
+
+textarea {
+  min-height: 118px;
+  resize: vertical;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #526257;
+}
+
+.status-strip,
+.metrics,
+.workspace {
+  max-width: 1180px;
+  margin-inline: auto;
+}
+
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  border-block: 1px solid #dfe5da;
+  font-size: 14px;
+  color: #526257;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #9b4b42;
+}
+
+.dot.online {
+  background: #2f7d4f;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.metrics article,
+.panel {
+  border: 1px solid #dfe5da;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.metrics article {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.metrics span,
+.campaign-row span {
+  font-size: 13px;
+  color: #657269;
+}
+
+.metrics strong {
+  font-size: 24px;
+  color: #172019;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 18px;
+}
+
+.panel.wide {
+  grid-column: 1 / -1;
+}
+
+.button-row,
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.field-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.code-line {
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+  color: #172019;
+  background: #eef3ea;
+}
+
+.campaign-list {
+  gap: 10px;
+}
+
+.campaign-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #edf1ea;
+  padding-top: 12px;
+}
+
+.campaign-row div {
+  display: grid;
+  gap: 2px;
+}
+
+.proof-shell {
+  padding-top: 40px;
+}
+
+.proof-workspace {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.proof-panel {
+  gap: 18px;
+}
+
+.proof-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.proof-item {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #edf1ea;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfa;
+}
+
+.proof-item span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #657269;
+  text-transform: uppercase;
+}
+
+.proof-item strong {
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 1.35;
+  color: #172019;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+}
+
+.proof-records {
+  display: grid;
+  gap: 10px;
+}
+
+.record-row {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #edf1ea;
+  padding-top: 10px;
+}
+
+.record-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.record-row span {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 700;
+  color: #657269;
+}
+
+.record-row strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  color: #172019;
+}
+
+a {
+  color: #2159d6;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 18px;
+  }
+
+  .topbar,
+  .status-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  .metrics,
+  .workspace,
+  .proof-grid,
+  .button-row,
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -2,7 +2,12 @@ import { DynamicEvmWalletClient } from '@dynamic-labs-wallet/node-evm';
 import { createPublicClient, createWalletClient, erc20Abi, formatUnits, http, parseUnits } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { foundry, sepolia } from 'viem/chains';
-import { CreateCampaignAuthorization, DevWalletGateway, TokenPermitAuthorization } from '../../../application/ports/devWalletGateway';
+import {
+  CreateCampaignAuthorization,
+  DevWalletGateway,
+  TokenPermitAuthorization,
+  WithdrawAuthorization,
+} from '../../../application/ports/devWalletGateway';
 import { DevWallet } from '../../../application/ports/devWalletRepository';
 import { AppConfig } from '../../../config';
 import { adEscrowAbi } from './adEscrowAbi';
@@ -113,6 +118,20 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
 
     async signCreateCampaignAuthorization(wallet, input): Promise<`0x${string}`> {
       const typedData = createCampaignAuthorizationTypedData(input.verifyingContract, input.chainId, input.authorization);
+
+      if (wallet.provider === 'dynamic') {
+        const authenticatedClient = await authenticatedDynamicClient(config);
+        return (await authenticatedClient.signTypedData({
+          accountAddress: wallet.address,
+          typedData: typedData as never,
+        })) as `0x${string}`;
+      }
+
+      return await localAccount(wallet).signTypedData(typedData);
+    },
+
+    async signWithdrawAuthorization(wallet, input): Promise<`0x${string}`> {
+      const typedData = createWithdrawAuthorizationTypedData(input.verifyingContract, input.chainId, input.authorization);
 
       if (wallet.provider === 'dynamic') {
         const authenticatedClient = await authenticatedDynamicClient(config);
@@ -247,26 +266,6 @@ export function createViemDevWalletGateway(config: AppConfig): DevWalletGateway 
       });
     },
 
-    withdraw(wallet: DevWallet, tokenAddress: `0x${string}`, amount: bigint) {
-      assertConfigured(config);
-      if (wallet.provider === 'dynamic') {
-        return signAndSendContract(wallet, {
-          address: config.escrowContractAddress as `0x${string}`,
-          abi: adEscrowAbi,
-          functionName: 'withdraw',
-          args: [tokenAddress, amount],
-        });
-      }
-
-      const account = localAccount(wallet);
-      return writeLocalContract(account, {
-        address: config.escrowContractAddress as `0x${string}`,
-        abi: adEscrowAbi,
-        functionName: 'withdraw',
-        args: [tokenAddress, amount],
-      });
-    },
-
     async createCampaignFromBalance(wallet, input) {
       assertConfigured(config);
       const request = {
@@ -358,6 +357,33 @@ function createCampaignAuthorizationTypedData(
         { name: 'token', type: 'address' },
         { name: 'amount', type: 'uint256' },
         { name: 'durationSeconds', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    message: authorization,
+  };
+}
+
+function createWithdrawAuthorizationTypedData(
+  verifyingContract: `0x${string}`,
+  chainId: number,
+  authorization: WithdrawAuthorization,
+) {
+  return {
+    domain: {
+      name: 'AdEscrow',
+      version: '1',
+      chainId,
+      verifyingContract,
+    },
+    primaryType: 'WithdrawAuthorization' as const,
+    types: {
+      WithdrawAuthorization: [
+        { name: 'user', type: 'address' },
+        { name: 'token', type: 'address' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'recipient', type: 'address' },
         { name: 'nonce', type: 'uint256' },
         { name: 'deadline', type: 'uint256' },
       ],

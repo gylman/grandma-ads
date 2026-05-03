@@ -105,11 +105,10 @@ export function createCampaignEnsEvent(input: {
     onchainCampaignId: input.campaign.onchainCampaignId,
     createdAt: now,
     textRecords: {
-      'com.ethy-ads.kind': 'campaign-event',
+      'com.ethy-ads.kind': 'ad-event',
       'com.ethy-ads.event': input.type,
-      'com.ethy-ads.campaign': input.campaign.ensName ?? input.campaign.id,
-      'com.ethy-ads.campaign-id': input.campaign.id,
-      'com.ethy-ads.onchain-campaign-id': input.campaign.onchainCampaignId ?? '',
+      'com.ethy-ads.ad': input.campaign.ensName ?? '',
+      'com.ethy-ads.ad-id': input.campaign.onchainCampaignId ?? '',
       'com.ethy-ads.tx-hash': input.txHash ?? '',
       'com.ethy-ads.agent': input.agentEnsName,
       'com.ethy-ads.timestamp': now.toISOString(),
@@ -147,12 +146,14 @@ export function createUserEnsIdentity(user: User): EnsIdentity | null {
 export function createCampaignEnsIdentityRecord(campaign: Campaign): EnsIdentity | null {
   if (!campaign.ensName) return null;
 
+  const latestEvent = [...campaign.ensEvents].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+
   return {
     name: campaign.ensName,
     address: campaign.advertiserWalletAddress,
     textRecords: {
-      'com.ethy-ads.kind': 'campaign',
-      'com.ethy-ads.campaign-id': campaign.id,
+      'com.ethy-ads.kind': 'ad',
+      'com.ethy-ads.ad-id': campaign.onchainCampaignId ?? '',
       'com.ethy-ads.status': campaign.status,
       'com.ethy-ads.channel': campaign.targetTelegramChannelUsername ?? '',
       'com.ethy-ads.amount': campaign.amount,
@@ -160,10 +161,10 @@ export function createCampaignEnsIdentityRecord(campaign: Campaign): EnsIdentity
       'com.ethy-ads.duration-seconds': campaign.durationSeconds.toString(),
       'com.ethy-ads.advertiser': campaign.advertiserEnsName ?? campaign.advertiserWalletAddress,
       'com.ethy-ads.poster': campaign.posterEnsName ?? campaign.posterWalletAddress ?? '',
-      'com.ethy-ads.onchain-campaign-id': campaign.onchainCampaignId ?? '',
       'com.ethy-ads.created-at': campaign.createdAt.toISOString(),
       'com.ethy-ads.updated-at': campaign.updatedAt.toISOString(),
-      'com.ethy-ads.submitted-post': campaign.submittedPostUrl ?? '',
+      'com.ethy-ads.latest-event': latestEvent?.name ?? '',
+      'com.ethy-ads.latest-tx-hash': latestEvent?.txHash ?? '',
     },
   };
 }

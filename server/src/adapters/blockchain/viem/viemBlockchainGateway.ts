@@ -8,6 +8,7 @@ import {
   CreateOnchainCampaignBySigInput,
   CreateOnchainCampaignInput,
   DepositWithPermitInput,
+  WithdrawBySigInput,
 } from '../../../application/ports/blockchainGateway';
 import { adEscrowAbi } from './adEscrowAbi';
 
@@ -107,6 +108,28 @@ export function createViemBlockchainGateway(config: AppConfig): BlockchainGatewa
         abi: adEscrowAbi,
         functionName: 'depositWithPermit',
         args: [input.ownerWalletAddress, input.tokenAddress, input.amount, input.deadline, input.signature],
+      });
+
+      const txHash = await writer.writeContract(simulation.request);
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      return txHash;
+    },
+
+    async withdrawBySig(input: WithdrawBySigInput) {
+      const writer = getWalletClient();
+      const simulation = await publicClient.simulateContract({
+        account,
+        address: config.escrowContractAddress as `0x${string}`,
+        abi: adEscrowAbi,
+        functionName: 'withdrawBySig',
+        args: [
+          input.userWalletAddress,
+          input.tokenAddress,
+          input.amount,
+          input.recipientWalletAddress,
+          input.deadline,
+          input.signature,
+        ],
       });
 
       const txHash = await writer.writeContract(simulation.request);

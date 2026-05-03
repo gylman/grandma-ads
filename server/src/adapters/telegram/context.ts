@@ -43,7 +43,7 @@ export async function runDevCommand(ctx: TelegramBotContext, chatId: number, act
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[telegram]: dev command failed", message);
-    await ctx.api.sendMessage(chatId, `Dev command failed: ${message}`);
+    await ctx.api.sendMessage(chatId, `I could not complete that yet.\n\n${message}`);
   }
 }
 
@@ -52,7 +52,7 @@ export async function runWithProcessing<T>(
   chatId: number,
   action: () => Promise<T>,
 ): Promise<T> {
-  const processing = await ctx.api.sendMessage(chatId, "Processing...");
+  const processing = await ctx.api.sendMessage(chatId, "⏳ Processing...");
 
   try {
     return await action();

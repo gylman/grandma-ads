@@ -72,7 +72,10 @@ async function handlePendingChannelVerification(
 
   const owner = await ctx.useCases.getUserById(match.ownerUserId);
   if (owner?.telegramUserId) {
-    await ctx.api.sendMessage(Number(owner.telegramUserId), `Channel verified: @${channelUsername}`);
+    await ctx.api.sendMessage(
+      Number(owner.telegramUserId),
+      ["Channel verified:", `https://t.me/${channelUsername}`, "", "You will be notified if someone wants to run ads on your channel."].join("\n"),
+    );
   }
 
   return true;

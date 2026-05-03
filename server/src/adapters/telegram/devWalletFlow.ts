@@ -1,7 +1,7 @@
 import { formatDevTokenAmount } from "../blockchain/viem/devWalletGateway";
 import { TelegramBotContext, runWithProcessing, sendPromptForReply } from "./context";
-import { balanceSignature, formatMajorBalances, friendlyBalanceLookupError } from "./formatters";
-import { checkBalanceButton, devWalletButtons } from "./keyboards";
+import { balanceSignature, formatWalletOverviewText, friendlyBalanceLookupError } from "./formatters";
+import { devWalletButtons } from "./keyboards";
 import { explorerTxUrl, htmlLink } from "./proofLinks";
 import { escapeHtml } from "./richText";
 import { parseDevTokenAmountInput } from "./tokenUtils";
@@ -23,12 +23,14 @@ export async function sendDevWalletOverview(ctx: TelegramBotContext, chatId: num
       telegramUserId,
       lastSignature: balanceSignature(overview.balances),
     });
-    await ctx.api.sendMessage(chatId, [`Wallet: ${overview.wallet.address}`, `Provider: ${overview.wallet.provider}`, "", "Balances:", ...formatMajorBalances(overview.balances)].join("\n"));
+    await ctx.api.sendMessage(chatId, formatWalletOverviewText({ walletAddress: overview.wallet.address, balances: overview.balances }), {
+      replyMarkup: devWalletButtons(true),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "balance lookup failed";
     await ctx.api.sendMessage(
       chatId,
-      [`Wallet: ${wallet.address}`, `Provider: ${wallet.provider}`, "", `I could not read balances yet: ${friendlyBalanceLookupError(message)}`].join("\n"),
+      [`👛 Wallet:`, wallet.address, "", `I could not read balances yet: ${friendlyBalanceLookupError(message)}`].join("\n"),
     );
   }
 
@@ -50,7 +52,9 @@ export function createBalanceMonitor(ctx: TelegramBotContext): { pollKnownBalanc
           if (signature === watcher.lastSignature) continue;
 
           ctx.state.balanceWatchers.set(chatId, { ...watcher, lastSignature: signature });
-          await ctx.api.sendMessage(chatId, ["Balance updated.", "", `Wallet: ${overview.wallet.address}`, "", ...formatMajorBalances(overview.balances)].join("\n"));
+          await ctx.api.sendMessage(chatId, ["Balance updated.", "", formatWalletOverviewText({ walletAddress: overview.wallet.address, balances: overview.balances })].join("\n"), {
+            replyMarkup: devWalletButtons(true),
+          });
         } catch (error) {
           console.error("[telegram]: balance monitor failed", error instanceof Error ? error.message : error);
         }
@@ -64,7 +68,7 @@ export function createBalanceMonitor(ctx: TelegramBotContext): { pollKnownBalanc
 }
 
 export async function promptMint(ctx: TelegramBotContext, chatId: number): Promise<void> {
-  await sendPromptForReply(ctx, chatId, "Reply with amount and token.\nExample: 1000 USDC or 1000 USDT", "DEV_MINT", {
+  await sendPromptForReply(ctx, chatId, "Reply with the amount and token.\n\nExamples:\n1000 USDC\n1000 USDT", "DEV_MINT", {
     placeholder: "1000 USDC",
   });
 }
@@ -73,7 +77,7 @@ export async function promptDeposit(ctx: TelegramBotContext, chatId: number): Pr
   await sendPromptForReply(
     ctx,
     chatId,
-    "Reply with amount and token to deposit.\nExample: 100 USDC or 100 USDT",
+    "Reply with the amount and token to deposit.\n\nExamples:\n100 USDC\n100 USDT",
     "DEV_DEPOSIT",
     { placeholder: "100 USDC" },
   );
@@ -83,7 +87,7 @@ export async function promptWithdraw(ctx: TelegramBotContext, chatId: number): P
   await sendPromptForReply(
     ctx,
     chatId,
-    "Reply with amount and token to withdraw.\nExample: 25 USDC or 25 USDT",
+    "Reply with the amount and token to withdraw.\n\nExamples:\n25 USDC\n25 USDT",
     "DEV_WITHDRAW",
     { placeholder: "25 USDC" },
   );
@@ -92,18 +96,15 @@ export async function promptWithdraw(ctx: TelegramBotContext, chatId: number): P
 export async function createDevWallet(ctx: TelegramBotContext, chatId: number, telegramUserId: string, telegramUsername?: string | null): Promise<void> {
   const wallet = await ctx.useCases.ensureDevWallet(telegramUserId, telegramUsername);
   const user = await ctx.useCases.getUserByWallet(wallet.address);
-  await ctx.api.sendMessage(chatId, `<b>Wallet Created</b>\n\n<b>ENS:</b> <code>${escapeHtml(user?.ensName ?? "not assigned")}</code>\n<b>Address:</b> <code>${escapeHtml(wallet.address)}</code>\n<b>Provider:</b> ${escapeHtml(wallet.provider)}`, {
+  await ctx.api.sendMessage(chatId, `<b>Wallet created.</b>\n\n<b>ENS:</b>\n<code>${escapeHtml(user?.ensName ?? "not assigned")}</code>\n\n<b>Address:</b>\n<code>${escapeHtml(wallet.address)}</code>`, {
     parseMode: "HTML",
   });
   await sendDevWalletOverview(ctx, chatId, telegramUserId);
-  await ctx.api.sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
 }
 
 export async function sendDevBalanceWithActions(ctx: TelegramBotContext, chatId: number, telegramUserId: string): Promise<void> {
   const shown = await sendDevWalletOverview(ctx, chatId, telegramUserId);
-  if (shown) {
-    await ctx.api.sendMessage(chatId, "Wallet actions:", { replyMarkup: devWalletButtons(true) });
-  }
+  void shown;
 }
 
 export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
@@ -113,10 +114,10 @@ export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, tele
     chatId,
     `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)}\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n\n${htmlLink("View Mint Transaction", explorerTxUrl(ctx.config, result.txHash))}`,
     {
-      replyMarkup: checkBalanceButton(),
       parseMode: "HTML",
     },
   );
+  await sendDevWalletOverview(ctx, chatId, telegramUserId);
 }
 
 export async function depositMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
@@ -125,12 +126,13 @@ export async function depositMockUsdc(ctx: TelegramBotContext, chatId: number, t
   await ctx.api.sendMessage(
     chatId,
     [
-      `Deposited ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} mock ${escapeHtml(result.token.symbol)} into escrow with a gasless relay.`,
+      `Deposited ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)} into escrow.`,
       "",
       htmlLink("View Deposit Transaction", explorerTxUrl(ctx.config, result.txHash)),
     ].join("\n"),
     { parseMode: "HTML" },
   );
+  await sendDevWalletOverview(ctx, chatId, telegramUserId);
 }
 
 export async function withdrawMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
@@ -139,10 +141,11 @@ export async function withdrawMockUsdc(ctx: TelegramBotContext, chatId: number, 
   await ctx.api.sendMessage(
     chatId,
     [
-      `Withdrew ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} mock ${escapeHtml(result.token.symbol)} from escrow.`,
+      `Withdrew ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)} from escrow.`,
       "",
       htmlLink("View Withdrawal Transaction", explorerTxUrl(ctx.config, result.txHash)),
     ].join("\n"),
     { parseMode: "HTML" },
   );
+  await sendDevWalletOverview(ctx, chatId, telegramUserId);
 }

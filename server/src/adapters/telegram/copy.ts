@@ -2,12 +2,36 @@ export function campaignOpeningPrompt(): string {
   return [
     "Tell me about the ad you want to run.",
     "",
-    "You can write it naturally. I just need the channel, price, currency, how long the post should stay up, and the caption or goal.",
+    "You can write it naturally. I just need:",
+    "- Channel link",
+    "- Price",
+    "- Currency",
+    "- Duration",
+    "- Caption",
+    "",
+    "You can also include an image.",
     "",
     "I will draft the first version, then we can tune the wording before anything is sent.",
     "",
     "For example:",
-    "Promote Grandma Ads on @openagents2026 for 100 USDC for 24 hours. Caption: Sponsored posts with escrow, without spreadsheets.",
+    "Promote Grandma Ads on https://t.me/openagents2026 for 100 USDC for 24 hours.",
+    "Caption: Sponsored posts with escrow, without spreadsheets.",
+  ].join("\n");
+}
+
+export function startText(): string {
+  return [
+    "Welcome.",
+    "",
+    "This bot helps you create and manage Telegram ads with escrow.",
+    "",
+    "How it works:",
+    "- Register your channel",
+    "- Create an ad",
+    "- Lock funds safely",
+    "- Run the ad only when both sides agree",
+    "",
+    "Choose an action below.",
   ].join("\n");
 }
 

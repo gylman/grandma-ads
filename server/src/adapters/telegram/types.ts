@@ -42,6 +42,18 @@ export type TelegramReplyMarkup = {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 };
 
+export type TelegramKeyboardButton = {
+  text: string;
+};
+
+export type TelegramReplyKeyboardMarkup = {
+  keyboard: Array<Array<TelegramKeyboardButton | string>>;
+  resize_keyboard?: boolean;
+  one_time_keyboard?: boolean;
+  selective?: boolean;
+  input_field_placeholder?: string;
+};
+
 export type TelegramForceReplyMarkup = {
   force_reply: true;
   selective?: boolean;

@@ -312,8 +312,8 @@ export function createAppUseCases(dependencies: {
       return campaigns.createDraft({
         ...input,
         id: input.id ?? identity.id,
-        ensLabel: input.ensLabel ?? identity.ensLabel,
-        ensName: input.ensName ?? identity.ensName,
+        ensLabel: input.ensLabel ?? null,
+        ensName: input.ensName ?? null,
         advertiserEnsName,
       });
     },
@@ -376,8 +376,8 @@ export function createAppUseCases(dependencies: {
         durationSeconds: recommendation.intake.durationSeconds ?? 0,
         requestedText: recommendation.intake.adText ?? input.message,
         requestedImageFileId: input.requestedImageFileId ?? null,
-        ensLabel: identity.ensLabel,
-        ensName: identity.ensName,
+        ensLabel: null,
+        ensName: null,
       });
 
       const updatedCampaign = await campaigns.patch(campaign.id, {
@@ -836,7 +836,6 @@ export function createAppUseCases(dependencies: {
       if (!wallet) throw new Error('No dev wallet exists yet. Use /dev_create_wallet first.');
 
       const balances = await devWalletGateway.getMajorBalances(wallet);
-      const nativeBalance = balances.find((balance) => balance.isNative)?.walletBalance ?? 0n;
       const tokenBalance = balances.find((balance) => balance.symbol === tokenSymbol.toUpperCase());
       const availableInEscrow = tokenBalance?.escrowBalance ?? 0n;
 
@@ -851,22 +850,40 @@ export function createAppUseCases(dependencies: {
           )}.`,
         );
       }
-      if (nativeBalance === 0n) {
-        throw new Error('This wallet has no ETH for gas yet. Send a small amount of ETH to it, then try /dev_withdraw again.');
-      }
 
       try {
-        const txHash = await devWalletGateway.withdraw(wallet, tokenBalance.address, amount);
-        return { wallet, token: tokenBalance, txHash };
+        const nonce = await blockchain.getCampaignNonce(wallet.address);
+        const deadline = BigInt(Math.floor(Date.now() / 1000) + 15 * 60);
+        const signature = await devWalletGateway.signWithdrawAuthorization(wallet, {
+          verifyingContract: dependencies.escrowContractAddress as `0x${string}`,
+          chainId: dependencies.chainId,
+          authorization: {
+            user: wallet.address,
+            token: tokenBalance.address,
+            amount,
+            recipient: wallet.address,
+            nonce,
+            deadline,
+          },
+        });
+        const txHash = await blockchain.withdrawBySig({
+          userWalletAddress: wallet.address,
+          tokenAddress: tokenBalance.address,
+          amount,
+          recipientWalletAddress: wallet.address,
+          deadline,
+          signature,
+        });
+        return { wallet, token: tokenBalance, txHash, signature, deadline };
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
-        if (message.includes('insufficient funds')) {
-          throw new Error('This wallet does not have enough ETH to cover gas for the withdrawal.');
+        if (message.includes('function "withdrawBySig"') || message.includes('function "nonces" reverted')) {
+          throw new Error('The deployed escrow contract is still the old version. Redeploy the escrow contract, update ESCROW_CONTRACT_ADDRESS, and try again.');
         }
-        if (message.includes('Cannot infer a transaction type')) {
-          throw new Error('I could not prepare the withdrawal transaction. Restart the server and try /dev_withdraw again.');
+        if (message.includes('InvalidSignature') || message.includes('SignatureExpired')) {
+          throw new Error('I could not authorize that gasless withdrawal. Please try /dev_withdraw again.');
         }
-        throw new Error(`I could not withdraw that ${tokenBalance.symbol} from escrow. Please try again.`);
+        throw new Error(`I could not relay that ${tokenBalance.symbol} withdrawal from escrow. Please try again.`);
       }
     },
   };

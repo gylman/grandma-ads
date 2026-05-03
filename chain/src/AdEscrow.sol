@@ -41,6 +41,8 @@ contract AdEscrow {
     bytes32 private constant CREATE_CAMPAIGN_TYPEHASH = keccak256(
         "CreateCampaignAuthorization(address advertiser,address poster,address token,uint256 amount,uint256 durationSeconds,uint256 nonce,uint256 deadline)"
     );
+    bytes32 private constant WITHDRAW_TYPEHASH =
+        keccak256("WithdrawAuthorization(address user,address token,uint256 amount,address recipient,uint256 nonce,uint256 deadline)");
     uint256 private constant SECP256K1N_DIV_2 =
         0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
 
@@ -186,13 +188,33 @@ contract AdEscrow {
         if (token == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
-        uint256 currentBalance = balances[msg.sender][token];
-        if (currentBalance < amount) revert InsufficientBalance();
-
-        balances[msg.sender][token] = currentBalance - amount;
-        IERC20(token).safeTransfer(msg.sender, amount);
+        _withdraw(msg.sender, token, amount, msg.sender);
 
         emit Withdrawn(msg.sender, token, amount);
+    }
+
+    function withdrawBySig(
+        address user,
+        address token,
+        uint256 amount,
+        address recipient,
+        uint256 deadline,
+        bytes calldata signature
+    ) external nonReentrant {
+        if (user == address(0) || token == address(0) || recipient == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (block.timestamp > deadline) revert SignatureExpired();
+
+        uint256 nonce = nonces[user];
+        bytes32 structHash =
+            keccak256(abi.encode(WITHDRAW_TYPEHASH, user, token, amount, recipient, nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparatorV4(), structHash));
+        if (_recoverSigner(digest, signature) != user) revert InvalidSignature();
+
+        nonces[user] = nonce + 1;
+        _withdraw(user, token, amount, recipient);
+
+        emit Withdrawn(user, token, amount);
     }
 
     function createCampaignFromBalance(address poster, address token, uint256 amount, uint256 durationSeconds)
@@ -270,6 +292,14 @@ contract AdEscrow {
         });
 
         emit CampaignCreated(campaignId, advertiser, poster, token, amount, durationSeconds);
+    }
+
+    function _withdraw(address user, address token, uint256 amount, address recipient) private {
+        uint256 currentBalance = balances[user][token];
+        if (currentBalance < amount) revert InsufficientBalance();
+
+        balances[user][token] = currentBalance - amount;
+        IERC20(token).safeTransfer(recipient, amount);
     }
 
     function _recoverSigner(bytes32 digest, bytes calldata signature) private pure returns (address signer) {

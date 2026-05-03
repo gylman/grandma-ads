@@ -48,7 +48,8 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
     ctx.state.pendingPromptByChat.delete(chatId);
     await runDevCommand(ctx, chatId, async () => {
       if (pendingPrompt.type === "CAMPAIGN_DRAFT") {
-        await createCampaignDraftFromText(ctx, chatId, telegramUserId, text);
+        const combinedText = pendingPrompt.seedText ? `${pendingPrompt.seedText}\n${text}` : text;
+        await createCampaignDraftFromText(ctx, chatId, telegramUserId, combinedText);
         return;
       }
       if (pendingPrompt.type === "REGISTER_CHANNEL") {

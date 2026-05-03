@@ -15,7 +15,7 @@ export async function sendPromptForReply(
   chatId: number,
   text: string,
   type: PromptType,
-  options?: { campaignId?: string; placeholder?: string },
+  options?: { campaignId?: string; placeholder?: string; seedText?: string },
 ): Promise<void> {
   const prompt = await ctx.api.sendMessage(chatId, text, {
     replyMarkup: {
@@ -28,6 +28,7 @@ export async function sendPromptForReply(
     type,
     promptMessageId: prompt.message_id,
     campaignId: options?.campaignId,
+    seedText: options?.seedText,
   });
 }
 

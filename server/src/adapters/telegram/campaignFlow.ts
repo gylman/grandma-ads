@@ -136,7 +136,7 @@ export async function createCampaignDraftFromText(ctx: TelegramBotContext, chatI
         "Example: Promote Grandma Ads on @openagents2026 for 100 USDC for 24 hours. Caption: Sponsored posts with escrow, without spreadsheets.",
       ].join("\n"),
       "CAMPAIGN_DRAFT",
-      { placeholder: "Promote ... on @channel for ..." },
+      { placeholder: "Promote ... on @channel for ...", seedText: rawInput },
     );
     return;
   }
@@ -434,10 +434,10 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
       "",
       `<b>Amount:</b> ${escapeHtml(campaign.amount)}`,
       `<b>Duration:</b> ${escapeHtml(formatDuration(campaign.durationSeconds))}`,
-      `<b>Rule:</b> Publish the approved copy exactly and keep it live for the full duration.`,
-      "Payment condition: payment is made only after the post is verified to match the approved content and remain live for the required duration.",
+      `<b>Flow:</b> If you accept, I will publish the approved copy in the channel and keep watching it for the full duration.`,
+      "Payment condition: payment is made only after the published post is verified to remain live for the required duration.",
       "",
-      "Approved ad copy is in the next message so it is easy to copy on mobile.",
+      "The approved copy preview is in the next message.",
     ].join("\n"),
     { parseMode: "HTML" },
   );

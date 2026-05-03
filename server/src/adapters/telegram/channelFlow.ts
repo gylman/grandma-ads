@@ -40,7 +40,8 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
         `Channel registration is already pending for ${telegramChannelUsername}.`,
         `Verification code: ${channel.verificationCode}`,
         "",
-        "Post this exact code in the channel, then submit the public post URL.",
+        "Post this exact code in the channel.",
+        "I will verify it there and delete the verification post right away.",
       ].join("\n"),
     );
     return;
@@ -52,7 +53,8 @@ export async function registerChannelFromText(ctx: TelegramBotContext, chatId: n
       `Channel registration created for ${telegramChannelUsername}.`,
       `Verification code: ${channel.verificationCode}`,
       "",
-      "Post this exact code in the channel, then submit the public post URL (verification step wiring is next).",
+      "Post this exact code in the channel.",
+      "I will verify it there and delete the verification post right away.",
     ].join("\n"),
   );
 }

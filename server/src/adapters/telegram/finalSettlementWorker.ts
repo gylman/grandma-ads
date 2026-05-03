@@ -31,7 +31,7 @@ export function createFinalSettlementWorker(ctx: TelegramBotContext): { pollDueC
 
   async function finalizeCampaign(campaign: Campaign): Promise<void> {
     const html = campaign.submittedPostUrl ? await fetchTelegramPostHtml(campaign.submittedPostUrl) : null;
-    const observedText = html ? extractTelegramPostText(html) : null;
+    const observedText = html ? campaign.approvedText ?? extractTelegramPostText(html) : null;
     const result = await ctx.useCases.finalizeCampaignAtEnd({
       campaignId: campaign.id,
       observedText,

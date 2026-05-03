@@ -255,6 +255,10 @@ export function createAppUseCases(dependencies: {
       return users.findByWallet(walletAddress);
     },
 
+    async getUserById(userId: string) {
+      return users.findById(userId);
+    },
+
     getBalance(walletAddress: string, tokenAddress?: string) {
       return blockchain.getBalance(walletAddress, tokenAddress);
     },

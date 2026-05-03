@@ -74,7 +74,12 @@ export function createOpenAiAgentGateway(config: AppConfig): AgentGateway {
         tokenSymbol: result.tokenSymbol ?? fallbackIntake.tokenSymbol ?? undefined,
         durationSeconds: result.durationSeconds ?? fallbackIntake.durationSeconds,
         adText: result.adText ?? fallbackIntake.adText,
-        missingFields: mergeMissingFields(result.missingFields, fallbackIntake.missingFields),
+        missingFields: computeMissingFields({
+          targetChannel: result.targetChannel ?? fallbackIntake.targetChannel,
+          amount: result.amount ?? fallbackIntake.amount,
+          durationSeconds: result.durationSeconds ?? fallbackIntake.durationSeconds,
+          adText: result.adText ?? fallbackIntake.adText,
+        }),
       };
       const deterministicSafety = checkContentSafety(intake.adText ?? message);
       const safety = {
@@ -248,6 +253,16 @@ function extractOpenAiError(payload: unknown): string {
   return 'unknown error';
 }
 
-function mergeMissingFields(openAiFields: string[], fallbackFields: string[]): CampaignDraftRecommendation['intake']['missingFields'] {
-  return [...new Set([...openAiFields, ...fallbackFields])] as CampaignDraftRecommendation['intake']['missingFields'];
+function computeMissingFields(input: {
+  targetChannel?: string | null;
+  amount?: string | null;
+  durationSeconds?: number | null;
+  adText?: string | null;
+}): CampaignDraftRecommendation['intake']['missingFields'] {
+  return [
+    !input.targetChannel ? 'targetChannel' : null,
+    !input.amount ? 'amount' : null,
+    !input.durationSeconds ? 'durationSeconds' : null,
+    !input.adText ? 'adText' : null,
+  ].filter((field): field is CampaignDraftRecommendation['intake']['missingFields'][number] => field !== null);
 }

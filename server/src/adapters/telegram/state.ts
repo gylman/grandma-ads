@@ -7,6 +7,7 @@ export type PendingPrompt = {
   type: PromptType;
   promptMessageId: number;
   campaignId?: string;
+  seedText?: string;
 };
 
 export type BalanceWatcher = {

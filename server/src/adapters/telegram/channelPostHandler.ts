@@ -7,6 +7,10 @@ export async function handleChannelPost(ctx: TelegramBotContext, message: Telegr
   if (!channelUsername) return;
 
   const observedText = getMessageText(message);
+  if (!isEdited && observedText) {
+    const verificationHandled = await handlePendingChannelVerification(ctx, message, channelUsername, observedText);
+    if (verificationHandled) return;
+  }
   if (!observedText) return;
 
   if (!isEdited) {
@@ -35,4 +39,40 @@ export async function handleChannelPost(ctx: TelegramBotContext, message: Telegr
 
   if (advertiser?.telegramUserId) await ctx.api.sendMessage(Number(advertiser.telegramUserId), notice);
   if (poster?.telegramUserId) await ctx.api.sendMessage(Number(poster.telegramUserId), notice);
+}
+
+async function handlePendingChannelVerification(
+  ctx: TelegramBotContext,
+  message: TelegramMessage,
+  channelUsername: string,
+  observedText: string,
+): Promise<boolean> {
+  const pendingChannels = (await ctx.useCases.listChannels())
+    .filter((channel) => channel.status === "PENDING" && channel.verificationCode)
+    .filter((channel) => channel.telegramChannelUsername?.replace(/^@/, "").toLowerCase() === channelUsername.toLowerCase());
+
+  const match = pendingChannels.find((channel) => observedText.includes(channel.verificationCode!));
+  if (!match) return false;
+
+  const postUrl = `https://t.me/${channelUsername}/${message.message_id}`;
+  await ctx.useCases.verifyChannel(match.id, postUrl);
+
+  for (const [chatId, channelId] of ctx.state.pendingChannelVerification) {
+    if (channelId === match.id) {
+      ctx.state.pendingChannelVerification.delete(chatId);
+    }
+  }
+
+  try {
+    await ctx.api.deleteMessage(`@${channelUsername}`, message.message_id);
+  } catch (error) {
+    console.error("[telegram]: could not delete verification post", match.id, error instanceof Error ? error.message : error);
+  }
+
+  const owner = await ctx.useCases.getUserById(match.ownerUserId);
+  if (owner?.telegramUserId) {
+    await ctx.api.sendMessage(Number(owner.telegramUserId), `Channel verified: @${channelUsername}`);
+  }
+
+  return true;
 }

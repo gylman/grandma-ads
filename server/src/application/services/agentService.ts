@@ -3,10 +3,10 @@ import { Campaign, CampaignIntakeResult } from '../../domain/types';
 export function extractCampaignIntake(message: string): CampaignIntakeResult {
   const channel = message.match(/@([a-zA-Z0-9_]{5,})/)?.[0];
   const amountMatch = message.match(/\b(\d+(?:\.\d+)?)\s*(USDC|USD|DAI|ETH)?\b/i);
-  const durationMatch = message.match(/\b(\d+)\s*(hour|hours|hr|hrs|day|days|d)\b/i);
+  const durationMatch = message.match(/\b(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days|d)\b/i);
 
   const durationSeconds = durationMatch
-    ? Number(durationMatch[1]) * (/^d|day/i.test(durationMatch[2]) ? 86_400 : 3_600)
+    ? Number(durationMatch[1]) * durationUnitSeconds(durationMatch[2])
     : undefined;
 
   const missingFields = [
@@ -27,12 +27,11 @@ export function extractCampaignIntake(message: string): CampaignIntakeResult {
 
 export function generatePosterOffer(campaign: Campaign): string {
   const channel = campaign.targetTelegramChannelUsername ?? 'your channel';
-  const hours = Math.round(campaign.durationSeconds / 3600);
 
   return [
     `You have a sponsored post offer for ${channel}.`,
     `Amount: ${campaign.amount}`,
-    `Duration: ${hours} hour${hours === 1 ? '' : 's'}.`,
+    `Duration: ${formatDuration(campaign.durationSeconds)}.`,
     '',
     'Please publish this ad exactly as shown. If you change the text, image, or link, verification may fail and payment will not be released.',
     '',
@@ -43,4 +42,17 @@ export function generatePosterOffer(campaign: Campaign): string {
 export function explainVerificationFailure(reason: string | null): string {
   if (!reason) return 'The post could not be verified. Please check the post URL and try again.';
   return `${reason} Please repost or edit the message exactly as shown, then submit the post URL again.`;
+}
+
+function durationUnitSeconds(unit: string): number {
+  if (/^d|day/i.test(unit)) return 86_400;
+  if (/^h|hr|hour/i.test(unit)) return 3_600;
+  return 60;
+}
+
+function formatDuration(durationSeconds: number): string {
+  if (durationSeconds % 86_400 === 0) return `${durationSeconds / 86_400} day${durationSeconds === 86_400 ? '' : 's'}`;
+  if (durationSeconds % 3_600 === 0) return `${durationSeconds / 3_600} hour${durationSeconds === 3_600 ? '' : 's'}`;
+  if (durationSeconds % 60 === 0) return `${durationSeconds / 60} minute${durationSeconds === 60 ? '' : 's'}`;
+  return `${durationSeconds} seconds`;
 }

@@ -49,9 +49,16 @@ export function formatChannelLink(channel: string | null | undefined): string {
 }
 
 export function formatMajorBalances(balances: Awaited<ReturnType<AppUseCases["getDevWalletMajorBalances"]>>["balances"]): string[] {
+  return formatMajorBalancesWithLocks(balances, {});
+}
+
+export function formatMajorBalancesWithLocks(
+  balances: Awaited<ReturnType<AppUseCases["getDevWalletMajorBalances"]>>["balances"],
+  lockedByTokenAddress: Record<string, bigint>,
+): string[] {
   const visible = balances.filter((balance) => {
     if (balance.isNative) return true;
-    return balance.walletBalance > 0n || (balance.escrowBalance ?? 0n) > 0n;
+    return balance.walletBalance > 0n || (balance.escrowBalance ?? 0n) > 0n || (balance.address ? (lockedByTokenAddress[balance.address.toLowerCase()] ?? 0n) > 0n : false);
   });
 
   const lines = visible.flatMap((balance) => {
@@ -59,7 +66,8 @@ export function formatMajorBalances(balances: Awaited<ReturnType<AppUseCases["ge
     if (balance.escrowBalance === null) return [balance.symbol, `- Wallet: ${wallet}`];
 
     const escrow = formatDevTokenAmount(balance.escrowBalance, balance.decimals);
-    return [balance.symbol, `- Wallet: ${wallet}`, `- Available in escrow: ${escrow}`, "- Locked in escrow: 0"];
+    const locked = balance.address ? formatDevTokenAmount(lockedByTokenAddress[balance.address.toLowerCase()] ?? 0n, balance.decimals) : "0";
+    return [balance.symbol, `- Wallet: ${wallet}`, `- Available in escrow: ${escrow}`, `- Locked in escrow: ${locked}`];
   });
 
   const hasSpendableToken = visible.some((balance) => !balance.isNative && (balance.walletBalance > 0n || (balance.escrowBalance ?? 0n) > 0n));
@@ -74,9 +82,23 @@ export function formatMajorBalances(balances: Awaited<ReturnType<AppUseCases["ge
 
 export function formatWalletOverviewText(input: {
   walletAddress: string;
+  ensName?: string | null;
   balances: Awaited<ReturnType<AppUseCases["getDevWalletMajorBalances"]>>["balances"];
+  lockedByTokenAddress?: Record<string, bigint>;
 }): string {
-  return ["👛 Wallet:", input.walletAddress, "", "💰 Balances:", "", ...formatMajorBalances(input.balances)].join("\n");
+  return [
+    "👛 Wallet:",
+    input.ensName ?? input.walletAddress,
+    input.ensName ? `Address: ${shortAddress(input.walletAddress)}` : null,
+    "",
+    "💰 Balances:",
+    "",
+    ...formatMajorBalancesWithLocks(input.balances, input.lockedByTokenAddress ?? {}),
+  ].filter((line): line is string => line !== null).join("\n");
+}
+
+export function shortAddress(address: string): string {
+  return address.length > 14 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
 }
 
 export function formatAdReceiptHtml(campaign: Campaign, title: string): string {

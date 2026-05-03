@@ -1,10 +1,10 @@
 import { formatDevTokenAmount } from "../blockchain/viem/devWalletGateway";
 import { TelegramBotContext, runWithProcessing, sendPromptForReply } from "./context";
-import { balanceSignature, formatWalletOverviewText, friendlyBalanceLookupError } from "./formatters";
+import { balanceSignature, formatWalletOverviewText, friendlyBalanceLookupError, shortAddress } from "./formatters";
 import { devWalletButtons } from "./keyboards";
 import { explorerTxUrl, htmlLink } from "./proofLinks";
 import { escapeHtml } from "./richText";
-import { parseDevTokenAmountInput } from "./tokenUtils";
+import { parseDevTokenAmountInput, parseTokenAmountForButton } from "./tokenUtils";
 
 export async function sendDevWalletOverview(ctx: TelegramBotContext, chatId: number, telegramUserId: string): Promise<boolean> {
   const wallet = await ctx.useCases.getDevWallet(telegramUserId);
@@ -19,18 +19,23 @@ export async function sendDevWalletOverview(ctx: TelegramBotContext, chatId: num
 
   try {
     const overview = await ctx.useCases.getDevWalletMajorBalances(telegramUserId);
+    const user = await ctx.useCases.getUserByWallet(overview.wallet.address);
+    const lockedByTokenAddress = await lockedBalancesForAdvertiser(ctx, overview.wallet.address, overview.balances);
     ctx.state.balanceWatchers.set(chatId, {
       telegramUserId,
       lastSignature: balanceSignature(overview.balances),
     });
-    await ctx.api.sendMessage(chatId, formatWalletOverviewText({ walletAddress: overview.wallet.address, balances: overview.balances }), {
+    await ctx.api.sendMessage(chatId, formatWalletOverviewText({ walletAddress: overview.wallet.address, ensName: user?.ensName ?? null, balances: overview.balances, lockedByTokenAddress }), {
       replyMarkup: devWalletButtons(true),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "balance lookup failed";
+    const user = await ctx.useCases.getUserByWallet(wallet.address);
     await ctx.api.sendMessage(
       chatId,
-      [`👛 Wallet:`, wallet.address, "", `I could not read balances yet: ${friendlyBalanceLookupError(message)}`].join("\n"),
+      [`👛 Wallet:`, user?.ensName ?? wallet.address, user?.ensName ? `Address: ${shortAddress(wallet.address)}` : null, "", `I could not read balances yet: ${friendlyBalanceLookupError(message)}`]
+        .filter((line): line is string => line !== null)
+        .join("\n"),
     );
   }
 
@@ -52,7 +57,9 @@ export function createBalanceMonitor(ctx: TelegramBotContext): { pollKnownBalanc
           if (signature === watcher.lastSignature) continue;
 
           ctx.state.balanceWatchers.set(chatId, { ...watcher, lastSignature: signature });
-          await ctx.api.sendMessage(chatId, ["Balance updated.", "", formatWalletOverviewText({ walletAddress: overview.wallet.address, balances: overview.balances })].join("\n"), {
+          const user = await ctx.useCases.getUserByWallet(overview.wallet.address);
+          const lockedByTokenAddress = await lockedBalancesForAdvertiser(ctx, overview.wallet.address, overview.balances);
+          await ctx.api.sendMessage(chatId, ["Balance updated.", "", formatWalletOverviewText({ walletAddress: overview.wallet.address, ensName: user?.ensName ?? null, balances: overview.balances, lockedByTokenAddress })].join("\n"), {
             replyMarkup: devWalletButtons(true),
           });
         } catch (error) {
@@ -65,6 +72,38 @@ export function createBalanceMonitor(ctx: TelegramBotContext): { pollKnownBalanc
   }
 
   return { pollKnownBalances };
+}
+
+async function lockedBalancesForAdvertiser(
+  ctx: TelegramBotContext,
+  walletAddress: string,
+  balances: Awaited<ReturnType<TelegramBotContext["useCases"]["getDevWalletMajorBalances"]>>["balances"],
+): Promise<Record<string, bigint>> {
+  const tokenDecimals = new Map(
+    balances
+      .filter((balance) => balance.address)
+      .map((balance) => [balance.address!.toLowerCase(), balance.decimals]),
+  );
+  const lockedStatuses = new Set(["FUNDED", "OFFERED", "NEGOTIATING", "ACCEPTED", "AWAITING_POST", "VERIFYING_POST", "ACTIVE"]);
+  const lockedByTokenAddress: Record<string, bigint> = {};
+  const campaigns = await ctx.useCases.listCampaigns();
+
+  for (const campaign of campaigns) {
+    if (!lockedStatuses.has(campaign.status)) continue;
+    if (campaign.advertiserWalletAddress.toLowerCase() !== walletAddress.toLowerCase()) continue;
+
+    const tokenAddress = campaign.tokenAddress.toLowerCase();
+    const decimals = tokenDecimals.get(tokenAddress);
+    if (decimals === undefined) continue;
+
+    try {
+      lockedByTokenAddress[tokenAddress] = (lockedByTokenAddress[tokenAddress] ?? 0n) + parseTokenAmountForButton(campaign.amount, decimals);
+    } catch {
+      continue;
+    }
+  }
+
+  return lockedByTokenAddress;
 }
 
 export async function promptMint(ctx: TelegramBotContext, chatId: number): Promise<void> {
@@ -110,9 +149,10 @@ export async function sendDevBalanceWithActions(ctx: TelegramBotContext, chatId:
 export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
   const { amount, tokenSymbol } = parseDevTokenAmountInput(rawAmount);
   const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.mintDevWalletMockToken(telegramUserId, tokenSymbol, amount));
+  const user = await ctx.useCases.getUserByWallet(result.wallet.address);
   await ctx.api.sendMessage(
     chatId,
-    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)}\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n\n${htmlLink("View Mint Transaction", explorerTxUrl(ctx.config, result.txHash))}`,
+    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)}\n<b>Wallet:</b> <code>${escapeHtml(user?.ensName ?? shortAddress(result.wallet.address))}</code>\n\n${htmlLink("View Mint Transaction", explorerTxUrl(ctx.config, result.txHash))}`,
     {
       parseMode: "HTML",
     },

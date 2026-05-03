@@ -6,7 +6,7 @@ import { formatAdReceiptHtml, formatCampaignLabel, formatCampaignReference, form
 import { pendingAdvertiserUserId, pendingAdvertiserWalletAddress } from "./identity";
 import { campaignListButtons, counterDraftActionButtons, counterResponseActionButtons, offerActionButtons } from "./keyboards";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
-import { fundingProofLinks } from "./proofLinks";
+import { eventProofLinks, fundingProofLinks } from "./proofLinks";
 import { escapeHtml, highlightNegotiationTerms } from "./richText";
 import { campaignIdFromReply, counterProposalKey, rememberCampaignMessage } from "./state";
 import { parseDuration, parseTokenAmountForButton, resolveRequestedToken } from "./tokenUtils";
@@ -216,20 +216,31 @@ export async function acceptCampaignAndPublish(ctx: TelegramBotContext, chatId: 
   const campaign = await ctx.useCases.acceptCampaignOffer(telegramUserId, campaignId);
   const advertiser = await ctx.useCases.getUserByWallet(campaign.advertiserWalletAddress);
   const published = await runWithProcessing(ctx, chatId, async () => publishCampaignToChannel(ctx, campaign, telegramUserId));
+  const activeCampaign = published.verifiedCampaign ?? campaign;
+  const startedEvent = activeCampaign.ensEvents.find((event) => event.type === "STARTED");
+  const startedLinks = eventProofLinks(ctx.config, activeCampaign, "STARTED", "Started", startedEvent?.txHash);
   if (advertiser?.telegramUserId) {
     await ctx.api.sendMessage(
       Number(advertiser.telegramUserId),
       [
-        formatAdReceiptHtml(published.verifiedCampaign ?? campaign, "Ad is active"),
+        formatAdReceiptHtml(activeCampaign, "Ad is active"),
         "",
         `<b>Channel post:</b> ${escapeHtml(published.postUrl)}`,
+        startedLinks.length > 0 ? "" : null,
+        startedLinks.length > 0 ? startedLinks.join(" | ") : null,
       ].join("\n"),
       { parseMode: "HTML" },
     );
   }
   await ctx.api.sendMessage(
     chatId,
-    [formatAdReceiptHtml(published.verifiedCampaign ?? campaign, "Offer accepted"), "", `<b>Channel post:</b> ${escapeHtml(published.postUrl)}`].join("\n"),
+    [
+      formatAdReceiptHtml(activeCampaign, "Offer accepted"),
+      "",
+      `<b>Channel post:</b> ${escapeHtml(published.postUrl)}`,
+      startedLinks.length > 0 ? "" : null,
+      startedLinks.length > 0 ? startedLinks.join(" | ") : null,
+    ].filter((line): line is string => line !== null).join("\n"),
     { parseMode: "HTML" },
   );
 }
@@ -487,10 +498,12 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
     [
       result.funding ? formatAdReceiptHtml(campaign, "Funds locked") : `Funds were already locked for ${formatCampaignLabel(campaign)}.`,
       `Offer sent to @${campaign.targetTelegramChannelUsername?.replace(/^@/, "") ?? "poster"}.`,
-      result.funding ? "" : null,
-      result.funding ? fundingProofLinks(ctx.config, campaign, result.funding.txHash).join(" | ") : null,
+      "",
+      result.funding
+        ? fundingProofLinks(ctx.config, campaign, result.funding.txHash).join(" | ")
+        : eventProofLinks(ctx.config, campaign, "LOCKED", "Funding", campaign.ensEvents.find((event) => event.type === "LOCKED")?.txHash).join(" | "),
     ]
-      .filter((line): line is string => line !== null)
+      .filter((line): line is string => line !== null && line !== "")
       .join("\n"),
     { parseMode: "HTML" },
   );

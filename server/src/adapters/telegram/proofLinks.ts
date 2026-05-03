@@ -38,6 +38,22 @@ export function fundingProofLinks(config: AppConfig, campaign: Campaign, txHash:
   ];
 }
 
+export function eventProofLinks(
+  config: AppConfig,
+  campaign: Campaign,
+  eventType: CampaignEnsEventType,
+  label: string,
+  txHash?: string | null,
+): string[] {
+  if (!campaign.onchainCampaignId) return txHash ? [htmlLink(`View ${label} Transaction`, explorerTxUrl(config, txHash))] : [];
+
+  return [
+    htmlLink(`View ${label} Proof`, adEventProofUrl(config, campaign.onchainCampaignId, eventType)),
+    htmlLink("View Ad Record", adProofUrl(config, campaign.onchainCampaignId)),
+    txHash ? htmlLink(`View ${label} Transaction`, explorerTxUrl(config, txHash)) : null,
+  ].filter((item): item is string => item !== null);
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

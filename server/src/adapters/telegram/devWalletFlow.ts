@@ -2,6 +2,7 @@ import { formatDevTokenAmount } from "../blockchain/viem/devWalletGateway";
 import { TelegramBotContext, runWithProcessing, sendPromptForReply } from "./context";
 import { balanceSignature, formatMajorBalances, friendlyBalanceLookupError } from "./formatters";
 import { checkBalanceButton, devWalletButtons } from "./keyboards";
+import { explorerTxUrl, htmlLink } from "./proofLinks";
 import { escapeHtml } from "./richText";
 import { parseDevTokenAmountInput } from "./tokenUtils";
 
@@ -110,7 +111,7 @@ export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, tele
   const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.mintDevWalletMockToken(telegramUserId, tokenSymbol, amount));
   await ctx.api.sendMessage(
     chatId,
-    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)}\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n<b>Tx:</b> <code>${escapeHtml(result.txHash)}</code>`,
+    `<b>Mint Complete</b>\n\n<b>Amount:</b> ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} ${escapeHtml(result.token.symbol)}\n<b>Wallet:</b> <code>${escapeHtml(result.wallet.address)}</code>\n\n${htmlLink("View Mint Transaction", explorerTxUrl(ctx.config, result.txHash))}`,
     {
       replyMarkup: checkBalanceButton(),
       parseMode: "HTML",
@@ -121,11 +122,27 @@ export async function mintMockUsdc(ctx: TelegramBotContext, chatId: number, tele
 export async function depositMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
   const { amount, tokenSymbol } = parseDevTokenAmountInput(rawAmount);
   const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.depositDevWalletToken(telegramUserId, tokenSymbol, amount));
-  await ctx.api.sendMessage(chatId, [`Deposited ${formatDevTokenAmount(amount, result.token.decimals)} mock ${result.token.symbol} into escrow with a gasless relay.`, `Sponsored tx: ${result.txHash}`].join("\n"));
+  await ctx.api.sendMessage(
+    chatId,
+    [
+      `Deposited ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} mock ${escapeHtml(result.token.symbol)} into escrow with a gasless relay.`,
+      "",
+      htmlLink("View Deposit Transaction", explorerTxUrl(ctx.config, result.txHash)),
+    ].join("\n"),
+    { parseMode: "HTML" },
+  );
 }
 
 export async function withdrawMockUsdc(ctx: TelegramBotContext, chatId: number, telegramUserId: string, rawAmount: string): Promise<void> {
   const { amount, tokenSymbol } = parseDevTokenAmountInput(rawAmount);
   const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.withdrawDevWalletToken(telegramUserId, tokenSymbol, amount));
-  await ctx.api.sendMessage(chatId, `Withdrew ${formatDevTokenAmount(amount, result.token.decimals)} mock ${result.token.symbol} from escrow.\nTx: ${result.txHash}`);
+  await ctx.api.sendMessage(
+    chatId,
+    [
+      `Withdrew ${escapeHtml(formatDevTokenAmount(amount, result.token.decimals))} mock ${escapeHtml(result.token.symbol)} from escrow.`,
+      "",
+      htmlLink("View Withdrawal Transaction", explorerTxUrl(ctx.config, result.txHash)),
+    ].join("\n"),
+    { parseMode: "HTML" },
+  );
 }

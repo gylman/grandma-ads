@@ -74,6 +74,18 @@ export function createCampaignEnsIdentity(input: {
   };
 }
 
+export function createOnchainAdEnsIdentity(input: {
+  rootName: string;
+  onchainCampaignId: string | number | bigint;
+}): CampaignEnsIdentity {
+  const normalizedId = String(input.onchainCampaignId);
+  return {
+    id: `ad_${normalizedId}`,
+    ensLabel: normalizedId,
+    ensName: `${normalizedId}.ad.${input.rootName}`,
+  };
+}
+
 export function createCampaignEnsEvent(input: {
   campaign: Campaign;
   type: CampaignEnsEventType;
@@ -83,7 +95,7 @@ export function createCampaignEnsEvent(input: {
 }): CampaignEnsEvent {
   const now = input.now ?? new Date();
   const baseName = input.campaign.ensName ?? `${normalizeEnsLabel(input.campaign.id)}.campaigns.unknown`;
-  const eventLabel = normalizeEnsLabel(`${input.type.toLowerCase()}-${input.campaign.onchainCampaignId ?? 'offchain'}-${formatEventStamp(now)}`);
+  const eventLabel = normalizeEnsLabel(input.type.toLowerCase());
 
   return {
     name: `${eventLabel}.${baseName}`,
@@ -172,17 +184,6 @@ export function formatCampaignStamp(date: Date): string {
     `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`,
     'UTC',
   ].join('-');
-}
-
-function formatEventStamp(date: Date): string {
-  return [
-    date.getUTCFullYear(),
-    pad(date.getUTCMonth() + 1),
-    pad(date.getUTCDate()),
-    pad(date.getUTCHours()),
-    pad(date.getUTCMinutes()),
-    pad(date.getUTCSeconds()),
-  ].join('');
 }
 
 function pad(value: number): string {

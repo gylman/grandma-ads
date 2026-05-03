@@ -200,6 +200,92 @@ label {
   gap: 2px;
 }
 
+.proof-shell {
+  padding-top: 40px;
+}
+
+.proof-workspace {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.proof-panel {
+  gap: 18px;
+}
+
+.proof-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.proof-item {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #edf1ea;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfa;
+}
+
+.proof-item span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #657269;
+  text-transform: uppercase;
+}
+
+.proof-item strong {
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 1.35;
+  color: #172019;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+}
+
+.proof-records {
+  display: grid;
+  gap: 10px;
+}
+
+.record-row {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #edf1ea;
+  padding-top: 10px;
+}
+
+.record-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.record-row span {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 700;
+  color: #657269;
+}
+
+.record-row strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  color: #172019;
+}
+
+a {
+  color: #2159d6;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 18px;
@@ -217,6 +303,7 @@ label {
 
   .metrics,
   .workspace,
+  .proof-grid,
   .button-row,
   .field-grid {
     grid-template-columns: 1fr;

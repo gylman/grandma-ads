@@ -7,6 +7,23 @@ export type ApiCampaign = {
   targetTelegramChannelUsername: string | null;
   requestedText: string | null;
   status: string;
+  onchainCampaignId?: string | null;
+  ensName?: string | null;
+  advertiserEnsName?: string | null;
+  posterEnsName?: string | null;
+  tokenAddress?: string;
+  submittedPostUrl?: string | null;
+  ensEvents?: ApiEnsEvent[];
+};
+
+export type ApiEnsEvent = {
+  name: string;
+  type: string;
+  txHash: string | null;
+  agentEnsName: string;
+  onchainCampaignId: string | null;
+  textRecords: Record<string, string>;
+  createdAt: string;
 };
 
 export type ApiChannel = {
@@ -14,6 +31,25 @@ export type ApiChannel = {
   telegramChannelUsername: string | null;
   verificationCode: string | null;
   status: string;
+};
+
+export type ApiProofResponse = {
+  campaign: ApiCampaign;
+  ensRecord: {
+    name: string;
+    address: string | null;
+    textRecords: Record<string, string>;
+  } | null;
+};
+
+export type ApiEventProofResponse = {
+  campaign: ApiCampaign;
+  event: ApiEnsEvent;
+  ensRecord: {
+    name: string;
+    address: string | null;
+    textRecords: Record<string, string>;
+  } | null;
 };
 
 export async function createUser(walletAddress: string) {
@@ -62,6 +98,14 @@ export async function getHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function getAdProof(onchainCampaignId: string): Promise<ApiProofResponse> {
+  return request<ApiProofResponse>(`/api/proofs/ads/${onchainCampaignId}`);
+}
+
+export async function getAdEventProof(onchainCampaignId: string, eventType: string): Promise<ApiEventProofResponse> {
+  return request<ApiEventProofResponse>(`/api/proofs/ads/${onchainCampaignId}/${eventType}`);
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

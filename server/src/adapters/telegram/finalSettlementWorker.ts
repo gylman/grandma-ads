@@ -1,6 +1,7 @@
 import { Campaign } from "../../domain/types";
 import { TelegramBotContext } from "./context";
 import { formatCampaignLabel, formatDuration } from "./formatters";
+import { adEventProofUrl, adProofUrl, explorerTxUrl, htmlLink } from "./proofLinks";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
 
 export function createFinalSettlementWorker(ctx: TelegramBotContext): { pollDueCampaigns(): Promise<void> } {
@@ -66,13 +67,13 @@ export function createFinalSettlementWorker(ctx: TelegramBotContext): { pollDueC
   ): Promise<void> {
     const advertiser = await ctx.useCases.getUserByWallet(campaign.advertiserWalletAddress);
     const poster = campaign.posterWalletAddress ? await ctx.useCases.getUserByWallet(campaign.posterWalletAddress) : null;
-    const message = finalSettlementMessage(campaign, outcome);
+    const message = finalSettlementMessage(ctx, campaign, outcome);
 
     if (advertiser?.telegramUserId) {
-      await ctx.api.sendMessage(Number(advertiser.telegramUserId), message);
+      await ctx.api.sendMessage(Number(advertiser.telegramUserId), message, { parseMode: "HTML" });
     }
     if (poster?.telegramUserId && poster.telegramUserId !== advertiser?.telegramUserId) {
-      await ctx.api.sendMessage(Number(poster.telegramUserId), message);
+      await ctx.api.sendMessage(Number(poster.telegramUserId), message, { parseMode: "HTML" });
     }
   }
 
@@ -80,6 +81,7 @@ export function createFinalSettlementWorker(ctx: TelegramBotContext): { pollDueC
 }
 
 function finalSettlementMessage(
+  ctx: TelegramBotContext,
   campaign: Campaign,
   outcome: { settlement: "COMPLETED" | "REFUNDED" | "FAILED"; txHash: `0x${string}` | null; reason: string | null },
 ): string {
@@ -89,8 +91,9 @@ function finalSettlementMessage(
       `The post stayed live for ${formatDuration(campaign.durationSeconds)}.`,
       "The locked funds are now available to the publisher in escrow.",
       "I deleted the campaign post from the channel.",
-      outcome.txHash ? `Completion tx: ${outcome.txHash}` : null,
-      campaign.ensName ? "ENS completion proof was recorded." : null,
+      campaign.onchainCampaignId ? htmlLink("View Completion Proof", adEventProofUrl(ctx.config, campaign.onchainCampaignId, "COMPLETED")) : null,
+      campaign.onchainCampaignId ? htmlLink("View Ad Record", adProofUrl(ctx.config, campaign.onchainCampaignId)) : null,
+      outcome.txHash ? htmlLink("View Completion Transaction", explorerTxUrl(ctx.config, outcome.txHash)) : null,
     ]
       .filter((line): line is string => line !== null)
       .join("\n");
@@ -101,8 +104,9 @@ function finalSettlementMessage(
       `${formatCampaignLabel(campaign)} refunded.`,
       outcome.reason ?? "The final check did not pass.",
       "The locked funds were returned to the advertiser's available escrow balance.",
-      outcome.txHash ? `Refund tx: ${outcome.txHash}` : null,
-      campaign.ensName ? "ENS refund proof was recorded." : null,
+      campaign.onchainCampaignId ? htmlLink("View Refund Proof", adEventProofUrl(ctx.config, campaign.onchainCampaignId, "REFUNDED")) : null,
+      campaign.onchainCampaignId ? htmlLink("View Ad Record", adProofUrl(ctx.config, campaign.onchainCampaignId)) : null,
+      outcome.txHash ? htmlLink("View Refund Transaction", explorerTxUrl(ctx.config, outcome.txHash)) : null,
     ]
       .filter((line): line is string => line !== null)
       .join("\n");

@@ -210,6 +210,48 @@ export function createHttpRouter(useCases: AppUseCases, config: AppConfig): Rout
     }
   });
 
+  router.get('/api/proofs/ads/:onchainCampaignId', async (req, res, next) => {
+    try {
+      const campaign = await useCases.getCampaignByOnchainId(req.params.onchainCampaignId);
+      if (!campaign) {
+        res.status(404).json({ error: 'Ad proof not found' });
+        return;
+      }
+
+      res.json({
+        campaign,
+        ensRecord: campaign.ensName ? await useCases.resolveEnsName(campaign.ensName) : null,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/api/proofs/ads/:onchainCampaignId/:eventType', async (req, res, next) => {
+    try {
+      const campaign = await useCases.getCampaignByOnchainId(req.params.onchainCampaignId);
+      if (!campaign) {
+        res.status(404).json({ error: 'Ad proof not found' });
+        return;
+      }
+
+      const eventType = req.params.eventType.trim().toUpperCase();
+      const event = campaign.ensEvents.find((item) => item.type === eventType);
+      if (!event) {
+        res.status(404).json({ error: 'Event proof not found' });
+        return;
+      }
+
+      res.json({
+        campaign,
+        event,
+        ensRecord: await useCases.resolveEnsName(event.name),
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/api/campaigns/:id/transition', async (req, res) => {
     try {
       res.json({ campaign: await useCases.advanceCampaign(req.params.id, req.body.status) });

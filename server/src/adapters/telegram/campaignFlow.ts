@@ -6,6 +6,7 @@ import { formatCampaignLabel, formatCampaignReference, formatCampaignSummary, fo
 import { pendingAdvertiserUserId, pendingAdvertiserWalletAddress } from "./identity";
 import { counterDraftActionButtons, counterResponseActionButtons, offerActionButtons } from "./keyboards";
 import { extractTelegramPostText, fetchTelegramPostHtml, parseTelegramPostUrl } from "./postUtils";
+import { fundingProofLinks } from "./proofLinks";
 import { escapeHtml, highlightNegotiationTerms } from "./richText";
 import { campaignIdFromReply, counterProposalKey, rememberCampaignMessage } from "./state";
 import { parseDuration, parseTokenAmountForButton, resolveRequestedToken } from "./tokenUtils";
@@ -477,14 +478,12 @@ export async function sendOfferFromCampaignId(ctx: TelegramBotContext, chatId: n
     [
       result.funding ? `Funds locked for ${formatCampaignLabel(campaign)}.` : `Funds were already locked for ${formatCampaignLabel(campaign)}.`,
       `Offer sent to @${campaign.targetTelegramChannelUsername?.replace(/^@/, "") ?? "poster"}.`,
-      "",
-      "Signed authorization:",
-      result.funding?.authorizationMessage ?? "Already funded earlier.",
-      result.funding ? `Signature: ${result.funding.authorizationSignature}` : null,
-      result.funding ? `Tx: ${result.funding.txHash}` : null,
+      result.funding ? "" : null,
+      result.funding ? fundingProofLinks(ctx.config, campaign, result.funding.txHash).join(" | ") : null,
     ]
       .filter((line): line is string => line !== null)
       .join("\n"),
+    { parseMode: "HTML" },
   );
 }
 
@@ -520,7 +519,14 @@ export async function fundCampaignOnly(ctx: TelegramBotContext, chatId: number, 
   const result = await runWithProcessing(ctx, chatId, async () => ctx.useCases.fundDevCampaignFromBalance(telegramUserId, campaignId));
   await ctx.api.sendMessage(
     chatId,
-    [`Funds locked for ${formatCampaignLabel(result.campaign)}.`, `On-chain campaign: ${result.onchainCampaignId.toString()}`, `Tx: ${result.txHash}`, "", `Next: click Send Offer or use /send_offer ${result.campaign.id}`].join("\n"),
+    [
+      `Funds locked for ${formatCampaignLabel(result.campaign)}.`,
+      "",
+      fundingProofLinks(ctx.config, result.campaign, result.txHash).join(" | "),
+      "",
+      `Next: click Send Offer or use /send_offer ${result.campaign.id}`,
+    ].join("\n"),
+    { parseMode: "HTML" },
   );
 }
 

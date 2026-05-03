@@ -4,6 +4,7 @@ import {
   createCampaignEnsEvent,
   createCampaignEnsIdentity,
   createCampaignEnsIdentityRecord,
+  createOnchainAdEnsIdentity,
   createUserEnsIdentity,
   createUserEnsName,
   ensIdentityFromCampaignEvent,
@@ -225,9 +226,15 @@ export function createAppUseCases(dependencies: {
     let updated = campaign;
     if (updated.status === 'DRAFT') updated = await campaigns.advance(updated.id, 'AWAITING_FUNDS');
     if (updated.status === 'AWAITING_FUNDS') updated = await campaigns.advance(updated.id, 'FUNDED');
+    const onchainIdentity = createOnchainAdEnsIdentity({
+      rootName: ensRootName,
+      onchainCampaignId: result.onchainCampaignId,
+    });
 
     updated = await campaigns.patch(updated.id, {
       onchainCampaignId: result.onchainCampaignId.toString(),
+      ensLabel: onchainIdentity.ensLabel,
+      ensName: onchainIdentity.ensName,
     });
     updated = await appendCampaignEnsEvent(updated.id, 'LOCKED', result.txHash);
 
@@ -405,6 +412,11 @@ export function createAppUseCases(dependencies: {
 
     async getCampaign(campaignId: string) {
       return campaigns.findById(campaignId);
+    },
+
+    async getCampaignByOnchainId(onchainCampaignId: string) {
+      const campaignList = await campaigns.list();
+      return campaignList.find((campaign) => campaign.onchainCampaignId === onchainCampaignId) ?? null;
     },
 
     async findAwaitingPostCampaignForPoster(telegramUserId: string, channelUsername: string) {

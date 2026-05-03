@@ -2,321 +2,828 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Grandma Ads — Architecture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ethy Ads — Presentation</title>
 <style>
+  :root {
+    color-scheme: light;
+    --ink: #172033;
+    --muted: #64748b;
+    --paper: #fffdf7;
+    --line: #d9dfeb;
+    --blue: #1d4ed8;
+    --cyan: #0e7490;
+    --green: #15803d;
+    --gold: #b45309;
+    --rose: #be123c;
+    --violet: #6d28d9;
+    --dark: #111827;
+  }
+
   * { box-sizing: border-box; }
+
+  html {
+    scroll-snap-type: y mandatory;
+    scroll-behavior: smooth;
+  }
+
   body {
     margin: 0;
-    padding: 32px;
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    color: #0f172a;
+    background: #eef2f7;
+    color: var(--ink);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
-  .wrap {
-    max-width: 1500px;
+
+  a { color: inherit; }
+
+  .deck-nav {
+    position: fixed;
+    top: 18px;
+    right: 20px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(23, 32, 51, 0.12);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.84);
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(14px);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .deck-nav button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(23, 32, 51, 0.18);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .slide {
+    min-height: 100vh;
+    scroll-snap-align: start;
+    display: grid;
+    align-items: center;
+    padding: 48px;
+  }
+
+  .canvas {
+    width: min(1280px, 100%);
+    min-height: min(760px, calc(100vh - 96px));
     margin: 0 auto;
-    background: white;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(23, 32, 51, 0.12);
+    border-radius: 18px;
+    background: var(--paper);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
   }
-  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 800; color: #0f172a; }
-  .subtitle { margin: 0 0 20px; color: #64748b; font-size: 14px; }
-  svg { width: 100%; height: auto; display: block; }
-  .legend { margin-top: 24px; display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; color: #475569; }
-  .legend span { display: inline-flex; align-items: center; gap: 8px; }
-  .swatch { width: 28px; height: 3px; border-radius: 2px; }
-  .swatch.solid { background: #475569; }
-  .swatch.dashed { background: repeating-linear-gradient(90deg, #f59e0b 0 6px, transparent 6px 10px); }
-  .swatch.blue { background: repeating-linear-gradient(90deg, #3b82f6 0 6px, transparent 6px 10px); }
-  .swatch.green { background: repeating-linear-gradient(90deg, #22c55e 0 6px, transparent 6px 10px); }
-  .swatch.orange { background: repeating-linear-gradient(90deg, #f97316 0 6px, transparent 6px 10px); }
+
+  .inner {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    min-height: min(760px, calc(100vh - 96px));
+    padding: 54px 64px;
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: 0.95fr 1.05fr;
+    gap: 44px;
+    align-items: center;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  .three-col {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+
+  .eyebrow {
+    margin: 0 0 14px;
+    color: var(--blue);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  h1, h2, h3, p { margin-top: 0; }
+
+  h1 {
+    max-width: 820px;
+    margin-bottom: 24px;
+    font-size: clamp(44px, 6.6vw, 76px);
+    line-height: 1.04;
+    letter-spacing: 0;
+  }
+
+  h2 {
+    max-width: 920px;
+    margin-bottom: 22px;
+    font-size: clamp(38px, 5vw, 64px);
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  h3 {
+    margin-bottom: 10px;
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  .lead {
+    max-width: 820px;
+    color: #334155;
+    font-size: 24px;
+    line-height: 1.35;
+  }
+
+  .body-copy {
+    color: #334155;
+    font-size: 18px;
+    line-height: 1.55;
+  }
+
+  .small {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .hero-art {
+    min-height: 520px;
+    background:
+      radial-gradient(circle at 84% 28%, rgba(29, 78, 216, 0.13), transparent 32%),
+      radial-gradient(circle at 72% 72%, rgba(21, 128, 61, 0.11), transparent 30%),
+      linear-gradient(135deg, #fffdf7 0%, #f8fafc 100%);
+  }
+
+  .hero-content {
+    position: relative;
+    max-width: 690px;
+    z-index: 2;
+  }
+
+  .hero-visual {
+    position: absolute;
+    right: 78px;
+    bottom: 86px;
+    width: min(330px, 28%);
+    border-radius: 18px;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.16);
+  }
+
+  .brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 52px;
+  }
+
+  .brand-lockup img {
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+    object-fit: cover;
+    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18);
+  }
+
+  .brand-name {
+    font-size: 22px;
+    font-weight: 900;
+  }
+
+  .hero-title {
+    max-width: 660px;
+    text-wrap: balance;
+  }
+
+  .hero-lead {
+    max-width: 650px;
+  }
+
+  .hero-content .pill-row {
+    max-width: 640px;
+  }
+
+  .pill-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 7px 12px;
+    border: 1px solid rgba(23, 32, 51, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.74);
+    padding: 22px;
+    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.07);
+  }
+
+  .panel.blue { border-color: rgba(29, 78, 216, 0.24); background: #eff6ff; }
+  .panel.green { border-color: rgba(21, 128, 61, 0.22); background: #f0fdf4; }
+  .panel.gold { border-color: rgba(180, 83, 9, 0.24); background: #fffbeb; }
+  .panel.rose { border-color: rgba(190, 18, 60, 0.22); background: #fff1f2; }
+  .panel.violet { border-color: rgba(109, 40, 217, 0.22); background: #f5f3ff; }
+
+  .metric {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--dark);
+    font-size: 38px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .flow-step {
+    min-height: 150px;
+    position: relative;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #ffffff;
+  }
+
+  .flow-step::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -13px;
+    width: 12px;
+    height: 2px;
+    background: #94a3b8;
+  }
+
+  .flow-step:last-child::after { display: none; }
+
+  .step-number {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 16px;
+    border-radius: 999px;
+    background: var(--dark);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .architecture-map {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1fr;
+    gap: 20px;
+    align-items: stretch;
+  }
+
+  .stack {
+    display: grid;
+    gap: 12px;
+  }
+
+  .stack-item {
+    min-height: 78px;
+    padding: 16px;
+    border: 1px solid rgba(23, 32, 51, 0.13);
+    border-radius: 10px;
+    background: #ffffff;
+  }
+
+  .stack-item strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 16px;
+  }
+
+  .center-core {
+    display: grid;
+    align-content: center;
+    gap: 16px;
+    padding: 22px;
+    border: 2px solid rgba(29, 78, 216, 0.28);
+    border-radius: 16px;
+    background: linear-gradient(180deg, #eff6ff, #ffffff);
+  }
+
+  .code-name {
+    display: inline-block;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: rgba(17, 24, 39, 0.08);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+
+  .agent-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+  }
+
+  .agent {
+    min-height: 230px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #ffffff;
+  }
+
+  .agent img {
+    width: 100%;
+    height: 126px;
+    display: block;
+    object-fit: cover;
+  }
+
+  .agent div { padding: 14px; }
+  .agent strong { display: block; margin-bottom: 6px; }
+
+  .record-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .record-row {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid rgba(23, 32, 51, 0.1);
+    border-radius: 8px;
+    background: #ffffff;
+    font-size: 14px;
+  }
+
+  .record-row span:first-child {
+    color: var(--muted);
+    font-weight: 800;
+  }
+
+  .diagram-line {
+    margin: 16px 0;
+    padding: 14px;
+    border: 1px solid rgba(21, 128, 61, 0.18);
+    border-radius: 10px;
+    background: #f0fdf4;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .attribution-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+  }
+
+  .footer-note {
+    position: absolute;
+    left: 64px;
+    right: 64px;
+    bottom: 30px;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .slide-number {
+    font-weight: 800;
+    color: #334155;
+  }
+
+  .shape-band {
+    position: absolute;
+    inset: auto -8% -28% -8%;
+    height: 44%;
+    background: linear-gradient(90deg, rgba(29, 78, 216, 0.11), rgba(21, 128, 61, 0.1), rgba(180, 83, 9, 0.13));
+    transform: rotate(-2deg);
+  }
+
+  .dark-slide .canvas {
+    background: #101827;
+    color: #f8fafc;
+  }
+
+  .dark-slide .lead,
+  .dark-slide .body-copy,
+  .dark-slide .small { color: #cbd5e1; }
+
+  .dark-slide .eyebrow { color: #67e8f9; }
+  .dark-slide .panel { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.12); }
+  .dark-slide .code-name { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
+
+  @media (max-width: 920px) {
+    html { scroll-snap-type: none; }
+    .slide { padding: 16px; }
+    .canvas { min-height: auto; border-radius: 14px; }
+    .inner { min-height: auto; padding: 34px 24px 78px; }
+    .split,
+    .two-col,
+    .three-col,
+    .architecture-map,
+    .attribution-grid { grid-template-columns: 1fr; }
+    .flow { grid-template-columns: 1fr; }
+    .flow-step::after { display: none; }
+    .agent-grid { grid-template-columns: 1fr 1fr; }
+    .record-row { grid-template-columns: 1fr; }
+    .hero-visual {
+      position: static;
+      width: 100%;
+      max-height: 220px;
+      object-fit: cover;
+      border-radius: 14px 14px 0 0;
+    }
+    .hero-content { max-width: none; }
+    .footer-note { left: 24px; right: 24px; }
+  }
+
+  @media print {
+    body { background: #ffffff; }
+    .deck-nav { display: none; }
+    .slide {
+      min-height: 100vh;
+      padding: 0;
+      break-after: page;
+    }
+    .canvas {
+      width: 100%;
+      min-height: 100vh;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .inner { min-height: 100vh; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Grandma Ads — System Architecture</h1>
-  <p class="subtitle">Current implementation (solid arrows) + sponsor integration plan (dashed arrows)</p>
+<nav class="deck-nav" aria-label="Slide navigation">
+  <button type="button" id="prev" aria-label="Previous slide">‹</button>
+  <span id="counter">1 / 9</span>
+  <button type="button" id="next" aria-label="Next slide">›</button>
+</nav>
 
-<svg viewBox="0 0 1450 1140" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L10,4 z" fill="#475569"/>
-    </marker>
-    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L10,4 z" fill="#3b82f6"/>
-    </marker>
-    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L10,4 z" fill="#22c55e"/>
-    </marker>
-    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
-      <path d="M0,0 L0,8 L10,4 z" fill="#f97316"/>
-    </marker>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.12"/>
-    </filter>
-    <linearGradient id="serverBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fafafa"/>
-      <stop offset="100%" stop-color="#f1f5f9"/>
-    </linearGradient>
-    <linearGradient id="sponsorBg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#fffbeb"/>
-      <stop offset="100%" stop-color="#fef3c7"/>
-    </linearGradient>
-  </defs>
-
-  <!-- ===== ACTORS ===== -->
-  <g>
-    <rect x="475" y="20" width="200" height="56" rx="28" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
-    <text x="575" y="54" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Advertiser</text>
-
-    <rect x="775" y="20" width="240" height="56" rx="28" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
-    <text x="895" y="54" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Poster / Channel Owner</text>
-  </g>
-
-  <!-- ===== FRONTEND ===== -->
-  <g>
-    <rect x="400" y="120" width="320" height="80" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="2" filter="url(#shadow)"/>
-    <text x="560" y="150" text-anchor="middle" font-size="16" font-weight="700" fill="#155e75">React + Wagmi Web</text>
-    <text x="560" y="172" text-anchor="middle" font-size="12" fill="#0e7490">balance · deposit · withdraw · campaigns</text>
-    <text x="560" y="190" text-anchor="middle" font-size="12" fill="#0e7490">channel registration · campaign list</text>
-
-    <rect x="780" y="120" width="320" height="80" rx="12" fill="#cffafe" stroke="#0891b2" stroke-width="2" filter="url(#shadow)"/>
-    <text x="940" y="150" text-anchor="middle" font-size="16" font-weight="700" fill="#155e75">Telegram Bot</text>
-    <text x="940" y="172" text-anchor="middle" font-size="12" fill="#0e7490">long polling · /register_channel · /new_campaign</text>
-    <text x="940" y="190" text-anchor="middle" font-size="12" fill="#0e7490">/accept · /counter · /reject · /dev_*</text>
-  </g>
-
-  <!-- ===== SERVER CONTAINER ===== -->
-  <g>
-    <rect x="30" y="240" width="1100" height="640" rx="16" fill="url(#serverBg)" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6,4"/>
-    <text x="50" y="268" font-size="15" font-weight="800" fill="#475569" letter-spacing="1px">SERVER — HEXAGONAL ARCHITECTURE (Express)</text>
-
-    <!-- HTTP LAYER -->
-    <rect x="50" y="285" width="1060" height="60" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="70" y="308" font-size="11" font-weight="800" fill="#4338ca" letter-spacing="1.2px">HTTP LAYER</text>
-    <text x="70" y="328" font-size="13" fill="#312e81">Express Routes → /users · /me · /balances · /channels · /campaigns · /agent/intake</text>
-
-    <!-- APP LAYER -->
-    <text x="50" y="372" font-size="11" font-weight="800" fill="#7c3aed" letter-spacing="1.2px">APPLICATION LAYER</text>
-
-    <rect x="50" y="382" width="520" height="115" rx="10" fill="#faf5ff" stroke="#a855f7" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="70" y="408" font-size="15" font-weight="700" fill="#6b21a8">Use Cases</text>
-    <text x="70" y="428" font-size="11" fill="#581c87">createAppUseCases() — composition root</text>
-    <text x="70" y="447" font-size="11" fill="#581c87">• campaign lifecycle: draft → fund → offer → accept → settle</text>
-    <text x="70" y="464" font-size="11" fill="#581c87">• channels, users, dev wallet (mint / deposit / withdraw)</text>
-    <text x="70" y="481" font-size="11" fill="#581c87">• post submission &amp; verification triggers</text>
-
-    <rect x="590" y="382" width="520" height="115" rx="10" fill="#faf5ff" stroke="#a855f7" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="610" y="408" font-size="15" font-weight="700" fill="#6b21a8">Agent Service</text>
-    <text x="610" y="428" font-size="11" fill="#581c87">extractCampaignIntake — regex parse channel / amount / duration</text>
-    <text x="610" y="447" font-size="11" fill="#581c87">generatePosterOffer — template offer message</text>
-    <text x="610" y="464" font-size="11" fill="#581c87">suggestCounterReply — counter-offer negotiation</text>
-    <text x="610" y="481" font-size="11" fill="#581c87">explainVerificationFailure</text>
-
-    <!-- DOMAIN LAYER -->
-    <text x="50" y="525" font-size="11" font-weight="800" fill="#b45309" letter-spacing="1.2px">DOMAIN LAYER</text>
-
-    <rect x="50" y="535" width="345" height="115" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="70" y="561" font-size="15" font-weight="700" fill="#854d0e">Campaign FSM</text>
-    <text x="70" y="582" font-size="11" fill="#713f12">DRAFT → AWAITING_FUNDS</text>
-    <text x="70" y="599" font-size="11" fill="#713f12">→ FUNDED → OFFERED → ACCEPTED</text>
-    <text x="70" y="616" font-size="11" fill="#713f12">→ AWAITING_POST → VERIFYING_POST</text>
-    <text x="70" y="633" font-size="11" fill="#713f12">→ ACTIVE → COMPLETED / REFUNDED</text>
-
-    <rect x="412" y="535" width="345" height="115" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="432" y="561" font-size="15" font-weight="700" fill="#854d0e">Content Moderation</text>
-    <text x="432" y="582" font-size="11" fill="#713f12">SafetyResult { allowed, riskLevel,</text>
-    <text x="432" y="599" font-size="11" fill="#713f12">reasons[], suggestedFixes[] }</text>
-    <text x="432" y="616" font-size="11" fill="#713f12">drugs · scams · phishing · malware</text>
-    <text x="432" y="633" font-size="11" fill="#713f12">hate · adult · deceptive financial</text>
-
-    <rect x="774" y="535" width="336" height="115" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="794" y="561" font-size="15" font-weight="700" fill="#854d0e">Post Verification</text>
-    <text x="794" y="582" font-size="11" fill="#713f12">verifyPostSnapshot()</text>
-    <text x="794" y="599" font-size="11" fill="#713f12">URL parse · channel match check</text>
-    <text x="794" y="616" font-size="11" fill="#713f12">approved text matching (normalized)</text>
-    <text x="794" y="633" font-size="11" fill="#713f12">image hash verification</text>
-
-    <!-- ADAPTERS LAYER -->
-    <text x="50" y="678" font-size="11" font-weight="800" fill="#047857" letter-spacing="1.2px">ADAPTERS / PORTS</text>
-
-    <rect x="50" y="688" width="345" height="170" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="70" y="714" font-size="15" font-weight="700" fill="#065f46">Persistence</text>
-    <text x="70" y="734" font-size="11" font-weight="600" fill="#064e3b">InMemory · MongoDB</text>
-    <text x="70" y="754" font-size="11" fill="#064e3b">UserRepository</text>
-    <text x="70" y="771" font-size="11" fill="#064e3b">ChannelRepository</text>
-    <text x="70" y="788" font-size="11" fill="#064e3b">CampaignRepository</text>
-    <text x="70" y="805" font-size="11" fill="#064e3b">DevWalletRepository</text>
-    <text x="70" y="822" font-size="11" fill="#064e3b">VerificationCheckRepository</text>
-    <text x="70" y="839" font-size="11" fill="#064e3b">OfferMessageRepository</text>
-
-    <rect x="412" y="688" width="345" height="170" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="432" y="714" font-size="15" font-weight="700" fill="#065f46">Blockchain Gateway</text>
-    <text x="432" y="734" font-size="11" font-weight="600" fill="#064e3b">viem public + wallet client</text>
-    <text x="432" y="754" font-size="11" fill="#064e3b">getBalance(wallet, token)</text>
-    <text x="432" y="771" font-size="11" fill="#064e3b">createCampaignFromBalance()</text>
-    <text x="432" y="788" font-size="11" fill="#064e3b">startCampaign · completeCampaign</text>
-    <text x="432" y="805" font-size="11" fill="#064e3b">refundCampaign</text>
-    <text x="432" y="822" font-size="11" fill="#064e3b">DevWallet: mint · approve · deposit</text>
-    <text x="432" y="839" font-size="11" fill="#064e3b">withdraw · gas top-up</text>
-
-    <rect x="774" y="688" width="336" height="170" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.8" filter="url(#shadow)"/>
-    <text x="794" y="714" font-size="15" font-weight="700" fill="#065f46">Agent Gateway</text>
-    <text x="794" y="734" font-size="11" font-weight="600" fill="#064e3b">OpenAI · Deterministic</text>
-    <text x="794" y="754" font-size="11" fill="#064e3b">analyzeCampaignRequest()</text>
-    <text x="794" y="771" font-size="11" fill="#064e3b">suggestAdCopy()</text>
-    <text x="794" y="788" font-size="11" fill="#064e3b">generatePosterOffer()</text>
-    <text x="794" y="805" font-size="11" fill="#064e3b">suggestCounterReply()</text>
-    <text x="794" y="822" font-size="11" font-style="italic" fill="#047857">Falls back when</text>
-    <text x="794" y="839" font-size="11" font-style="italic" fill="#047857">OPENAI_API_KEY missing</text>
-  </g>
-
-  <!-- ===== SPONSORS PANEL ===== -->
-  <g>
-    <rect x="1150" y="240" width="270" height="640" rx="16" fill="url(#sponsorBg)" stroke="#d97706" stroke-width="2" stroke-dasharray="6,4"/>
-    <text x="1170" y="268" font-size="15" font-weight="800" fill="#92400e" letter-spacing="1px">SPONSOR INTEGRATIONS</text>
-    <text x="1170" y="285" font-size="11" fill="#a16207" font-style="italic">Planned — dashed arrows below</text>
-
-    <!-- KeeperHub -->
-    <rect x="1170" y="305" width="230" height="175" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2.5" filter="url(#shadow)"/>
-    <text x="1190" y="333" font-size="16" font-weight="800" fill="#1e3a8a">KeeperHub</text>
-    <text x="1190" y="354" font-size="11" font-weight="700" fill="#1e40af">Reliable execution layer</text>
-    <line x1="1190" y1="362" x2="1380" y2="362" stroke="#93c5fd" stroke-width="1"/>
-    <text x="1190" y="382" font-size="11" fill="#1e3a8a">→ startCampaign()</text>
-    <text x="1190" y="400" font-size="11" fill="#1e3a8a">→ completeCampaign()</text>
-    <text x="1190" y="418" font-size="11" fill="#1e3a8a">→ refundCampaign()</text>
-    <text x="1190" y="445" font-size="10" font-style="italic" fill="#3730a3">Replaces direct viem writes</text>
-    <text x="1190" y="461" font-size="10" font-style="italic" fill="#3730a3">for settlement actions</text>
-
-    <!-- ENS -->
-    <rect x="1170" y="500" width="230" height="170" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2.5" filter="url(#shadow)"/>
-    <text x="1190" y="528" font-size="16" font-weight="800" fill="#14532d">ENS</text>
-    <text x="1190" y="549" font-size="11" font-weight="700" fill="#166534">Identity layer</text>
-    <line x1="1190" y1="557" x2="1380" y2="557" stroke="#86efac" stroke-width="1"/>
-    <text x="1190" y="577" font-size="11" fill="#14532d">→ advertiser.eth</text>
-    <text x="1190" y="595" font-size="11" fill="#14532d">→ poster.eth</text>
-    <text x="1190" y="613" font-size="11" fill="#14532d">→ admein-agent.eth</text>
-    <text x="1190" y="640" font-size="10" font-style="italic" fill="#15803d">Resolved in bot messages,</text>
-    <text x="1190" y="656" font-size="10" font-style="italic" fill="#15803d">web UI, + text records</text>
-
-    <!-- 0G -->
-    <rect x="1170" y="690" width="230" height="170" rx="12" fill="#ffedd5" stroke="#ea580c" stroke-width="2.5" filter="url(#shadow)"/>
-    <text x="1190" y="718" font-size="16" font-weight="800" fill="#7c2d12">0G</text>
-    <text x="1190" y="739" font-size="11" font-weight="700" fill="#9a3412">Decentralized AI + Storage</text>
-    <line x1="1190" y1="747" x2="1380" y2="747" stroke="#fdba74" stroke-width="1"/>
-    <text x="1190" y="767" font-size="11" fill="#7c2d12">→ Compute: safety inference</text>
-    <text x="1190" y="785" font-size="11" fill="#7c2d12">→ Storage: proof bundles</text>
-    <text x="1190" y="803" font-size="11" fill="#7c2d12">    (text/image hashes,</text>
-    <text x="1190" y="820" font-size="11" fill="#7c2d12">     verification logs)</text>
-    <text x="1190" y="847" font-size="10" font-style="italic" fill="#c2410c">Optional — time permitting</text>
-  </g>
-
-  <!-- ===== INFRASTRUCTURE ROW ===== -->
-  <g>
-    <rect x="80" y="930" width="500" height="120" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" filter="url(#shadow)"/>
-    <text x="100" y="958" font-size="15" font-weight="800" fill="#f8fafc">⛓ AdEscrow.sol</text>
-    <text x="100" y="978" font-size="11" fill="#cbd5e1">Foundry · Base Sepolia (EVM)</text>
-    <line x1="100" y1="985" x2="560" y2="985" stroke="#475569" stroke-width="1"/>
-    <text x="100" y="1003" font-size="11" fill="#e2e8f0">deposit · withdraw · createCampaignFromBalance</text>
-    <text x="100" y="1020" font-size="11" fill="#e2e8f0">startCampaign · completeCampaign · refundCampaign</text>
-    <text x="100" y="1038" font-size="11" fill="#94a3b8">balances[user][token] · campaigns[id] · verifier role</text>
-
-    <rect x="610" y="930" width="240" height="120" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" filter="url(#shadow)"/>
-    <text x="630" y="958" font-size="15" font-weight="800" fill="#f8fafc">⛓ MockUSDC</text>
-    <text x="630" y="978" font-size="11" fill="#cbd5e1">ERC-20 token</text>
-    <line x1="630" y1="985" x2="830" y2="985" stroke="#475569" stroke-width="1"/>
-    <text x="630" y="1003" font-size="11" fill="#e2e8f0">approve()</text>
-    <text x="630" y="1020" font-size="11" fill="#e2e8f0">transfer()</text>
-    <text x="630" y="1038" font-size="11" fill="#94a3b8">mint() — test only</text>
-
-    <rect x="880" y="930" width="240" height="120" rx="12" fill="#fce7f3" stroke="#db2777" stroke-width="2" filter="url(#shadow)"/>
-    <text x="900" y="958" font-size="15" font-weight="800" fill="#831843">OpenAI API</text>
-    <text x="900" y="978" font-size="11" fill="#9d174d">Structured JSON outputs</text>
-    <line x1="900" y1="985" x2="1100" y2="985" stroke="#fbcfe8" stroke-width="1"/>
-    <text x="900" y="1003" font-size="11" fill="#831843">campaign_intake schema</text>
-    <text x="900" y="1020" font-size="11" fill="#831843">poster_offer schema</text>
-    <text x="900" y="1038" font-size="11" fill="#831843">counter_offer_reply schema</text>
-  </g>
-
-  <!-- ===== ARROWS — solid (current) ===== -->
-  <g fill="none" stroke="#475569" stroke-width="2.2">
-    <!-- Actors → Frontend -->
-    <path d="M 575 76 L 560 120" marker-end="url(#arrow)"/>
-    <path d="M 600 76 L 870 120" marker-end="url(#arrow)"/>
-    <path d="M 895 76 L 940 120" marker-end="url(#arrow)"/>
-
-    <!-- Frontend → HTTP/UseCases -->
-    <path d="M 560 200 L 560 285" marker-end="url(#arrow)"/>
-    <path d="M 940 200 Q 940 240 700 285" marker-end="url(#arrow)"/>
-
-    <!-- HTTP → Use Cases -->
-    <path d="M 310 345 L 310 382" marker-end="url(#arrow)"/>
-    <path d="M 850 345 L 850 382" marker-end="url(#arrow)"/>
-
-    <!-- Use Cases ↔ Agent Service -->
-    <path d="M 570 440 L 590 440" marker-end="url(#arrow)"/>
-    <path d="M 590 460 L 570 460" marker-end="url(#arrow)"/>
-
-    <!-- Use Cases / Agent Service → Domain -->
-    <path d="M 222 497 L 222 535" marker-end="url(#arrow)"/>
-    <path d="M 584 497 L 584 535" marker-end="url(#arrow)"/>
-    <path d="M 942 497 L 942 535" marker-end="url(#arrow)"/>
-
-    <!-- Domain → Adapters -->
-    <path d="M 222 650 L 222 688" marker-end="url(#arrow)"/>
-    <path d="M 584 650 L 584 688" marker-end="url(#arrow)"/>
-    <path d="M 942 650 L 942 688" marker-end="url(#arrow)"/>
-
-    <!-- Persistence → MongoDB (implied, internal) -->
-
-    <!-- Blockchain GW → AdEscrow -->
-    <path d="M 584 858 L 350 930" marker-end="url(#arrow)"/>
-
-    <!-- AdEscrow ↔ MockUSDC -->
-    <path d="M 580 985 L 610 985" stroke="#94a3b8" marker-end="url(#arrow)"/>
-
-    <!-- Agent GW → OpenAI -->
-    <path d="M 942 858 L 1000 930" marker-end="url(#arrow)"/>
-  </g>
-
-  <!-- ===== ARROWS — sponsors (dashed) ===== -->
-  <g fill="none" stroke-width="2.2" stroke-dasharray="7,5">
-    <!-- Blockchain GW → KeeperHub -->
-    <path d="M 757 770 Q 950 720 1170 395" stroke="#3b82f6" marker-end="url(#arrowBlue)"/>
-
-    <!-- KeeperHub → AdEscrow -->
-    <path d="M 1280 480 Q 1280 750 580 970" stroke="#3b82f6" marker-end="url(#arrowBlue)"/>
-
-    <!-- Web/Bot → ENS (curve from frontend zone) -->
-    <path d="M 1100 160 Q 1280 280 1280 500" stroke="#22c55e" marker-end="url(#arrowGreen)"/>
-
-    <!-- Agent GW → 0G Compute -->
-    <path d="M 1110 770 L 1170 770" stroke="#f97316" marker-end="url(#arrowOrange)"/>
-
-    <!-- Use Cases → 0G Storage -->
-    <path d="M 570 500 Q 1100 540 1170 800" stroke="#f97316" marker-end="url(#arrowOrange)"/>
-  </g>
-
-  <!-- Edge labels -->
-  <g font-size="10" fill="#64748b" font-style="italic">
-    <text x="975" y="252">REST</text>
-    <text x="600" y="270">REST</text>
-    <text x="455" y="893" fill="#475569">viem write</text>
-    <text x="1010" y="900" fill="#be185d">if API key</text>
-    <text x="940" y="700" fill="#3b82f6" font-weight="600">planned</text>
-    <text x="1155" y="170" fill="#16a34a" font-weight="600">name resolve</text>
-    <text x="1110" y="760" fill="#ea580c" font-weight="600">infer</text>
-    <text x="900" y="555" fill="#ea580c" font-weight="600">proof bundle</text>
-  </g>
-</svg>
-
-  <div class="legend">
-    <span><span class="swatch solid"></span> current implementation</span>
-    <span><span class="swatch blue"></span> KeeperHub (planned)</span>
-    <span><span class="swatch green"></span> ENS (planned)</span>
-    <span><span class="swatch orange"></span> 0G Compute / Storage (planned)</span>
+<section class="slide" id="slide-1">
+  <div class="canvas hero-art">
+    <img class="hero-visual" src="../assets/images/header.png" alt="Ethy Ads product visual">
+    <div class="inner">
+      <div class="hero-content">
+        <div class="brand-lockup">
+          <img src="../assets/images/logo.png" alt="Ethy Ads logo">
+          <div>
+            <div class="brand-name">Ethy Ads</div>
+            <div class="small">AI Telegram ad booking with ENS proof identities and on-chain escrow</div>
+          </div>
+        </div>
+        <p class="eyebrow">Hackathon presentation</p>
+        <h1 class="hero-title">Verified Telegram ads, paid by escrow.</h1>
+        <p class="lead hero-lead">Advertisers lock funds first. The bot publishes the approved ad after the channel owner accepts. Ethy Ads verifies delivery and settles escrow only when the post stays valid.</p>
+        <div class="pill-row">
+          <span class="pill">Telegram bot</span>
+          <span class="pill">Solidity escrow</span>
+          <span class="pill">ENS + CCIP-read proofs</span>
+          <span class="pill">Dynamic wallets</span>
+          <span class="pill">AI-assisted workflow</span>
+        </div>
+      </div>
+      <div class="footer-note"><span>Ethy Ads</span><span class="slide-number">01</span></div>
+    </div>
   </div>
-</div>
+</section>
+
+<section class="slide" id="slide-2">
+  <div class="canvas">
+    <div class="shape-band"></div>
+    <div class="inner">
+      <p class="eyebrow">Problem</p>
+      <h2>Telegram ads still happen like side deals.</h2>
+      <div class="three-col">
+        <article class="panel rose">
+          <span class="metric">1</span>
+          <h3>No standard flow</h3>
+          <p class="body-copy">Advertisers hunt for channel owners, DM them, negotiate manually, and hope the person on the other side is real.</p>
+        </article>
+        <article class="panel gold">
+          <span class="metric">2</span>
+          <h3>Trust breaks payments</h3>
+          <p class="body-copy">The advertiser worries the post will be deleted. The publisher worries they will not get paid after the ad goes live.</p>
+        </article>
+        <article class="panel blue">
+          <span class="metric">3</span>
+          <h3>Discovery is global, ads are not</h3>
+          <p class="body-copy">Language, usernames, informal payment rails, and changing identities make cross-border channel ads painful.</p>
+        </article>
+      </div>
+      <div class="footer-note"><span>The pain is not creating an ad. It is proving the deal was honored.</span><span class="slide-number">02</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-3">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">Product loop</p>
+      <h2>A simple booking flow with escrow-backed incentives.</h2>
+      <div class="flow">
+        <article class="flow-step">
+          <span class="step-number">1</span>
+          <h3>Create</h3>
+          <p class="small">Advertiser describes the ad, budget, target channel, and duration through the bot or client.</p>
+        </article>
+        <article class="flow-step">
+          <span class="step-number">2</span>
+          <h3>Lock</h3>
+          <p class="small">Funds move from available balance into a contract-backed campaign escrow.</p>
+        </article>
+        <article class="flow-step">
+          <span class="step-number">3</span>
+          <h3>Offer</h3>
+          <p class="small">Publisher receives exact content, payment terms, and accept or reject actions in Telegram.</p>
+        </article>
+        <article class="flow-step">
+          <span class="step-number">4</span>
+          <h3>Post + verify</h3>
+          <p class="small">After acceptance, the bot publishes the approved ad and the server verifies channel, text, image hash, and timing.</p>
+        </article>
+        <article class="flow-step">
+          <span class="step-number">5</span>
+          <h3>Settle</h3>
+          <p class="small">If the post stays valid, the publisher gets paid. If not, the advertiser is refunded.</p>
+        </article>
+      </div>
+      <div class="footer-note"><span>Core guarantee: pay only for verified delivery.</span><span class="slide-number">03</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-4">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">What we built</p>
+      <h2>One system, three trust layers.</h2>
+      <div class="architecture-map">
+        <div class="stack">
+          <div class="stack-item">
+            <strong>Telegram interface</strong>
+            <span class="small">Onboarding, channel proof posting, campaign offers, accept/reject, bot posting, verification, and status messages.</span>
+          </div>
+          <div class="stack-item">
+            <strong>React client</strong>
+            <span class="small">Public proof pages, campaign visibility, ENS records access, and wallet-oriented dashboard pieces.</span>
+          </div>
+          <div class="stack-item">
+            <strong>AI helpers</strong>
+            <span class="small">Intake, copy suggestions, safety review, offer generation, negotiation, translation-ready roles.</span>
+          </div>
+        </div>
+        <div class="center-core">
+          <h3>TypeScript server</h3>
+          <p class="body-copy">The server is the orchestrator: Express API, Telegram bot handlers, campaign state machine, verification logic, persistence, agent gateway, Dynamic wallet gateway, and Viem contract calls.</p>
+          <div class="diagram-line">DRAFT → FUNDED → OFFERED → ACCEPTED → AWAITING_POST → ACTIVE → COMPLETED / REFUNDED</div>
+        </div>
+        <div class="stack">
+          <div class="stack-item">
+            <strong>Solidity escrow</strong>
+            <span class="small">ERC-20 deposit, internal balances, campaign locking, verifier start, completion, refund, and withdrawal.</span>
+          </div>
+          <div class="stack-item">
+            <strong>ENS proof layer</strong>
+            <span class="small">Users, AI agents, ads, and lifecycle events become readable ENS records.</span>
+          </div>
+          <div class="stack-item">
+            <strong>CCIP-read resolver</strong>
+            <span class="small">Dynamic off-chain ad records resolve through a standard EIP-3668 gateway.</span>
+          </div>
+        </div>
+      </div>
+      <div class="footer-note"><span>No AI finalizes money. Deterministic verification and contract state do.</span><span class="slide-number">04</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide dark-slide" id="slide-5">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">ENS integration</p>
+      <h2>ENS is the identity and proof surface.</h2>
+      <div class="two-col">
+        <div>
+          <p class="lead">Instead of showing only raw addresses or internal IDs, Ethy Ads creates readable names for participants, agents, ads, and proof events.</p>
+          <div class="diagram-line">
+            alice.user.ethy-ads.eth<br>
+            verifier.ethy-ads.eth<br>
+            7.ad.ethy-ads.eth<br>
+            locked.7.ad.ethy-ads.eth
+          </div>
+        </div>
+        <div class="panel">
+          <h3>What resolves through ENS</h3>
+          <div class="record-list">
+            <div class="record-row"><span>com.ethy-ads.status</span><span>FUNDED / ACTIVE / COMPLETED / REFUNDED</span></div>
+            <div class="record-row"><span>com.ethy-ads.channel</span><span>@target_channel</span></div>
+            <div class="record-row"><span>com.ethy-ads.amount</span><span>100 USDC</span></div>
+            <div class="record-row"><span>com.ethy-ads.agent</span><span>verifier.ethy-ads.eth</span></div>
+            <div class="record-row"><span>com.ethy-ads.tx-hash</span><span>escrow lifecycle transaction</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="footer-note"><span>CCIP-read keeps proof records live without hard-coding demo values.</span><span class="slide-number">05</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-6">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">AI agents</p>
+      <h2>Agentic, but not financially autonomous.</h2>
+      <div class="agent-grid">
+        <article class="agent">
+          <img src="../assets/images/intaker.png" alt="Intaker agent">
+          <div><strong>Intaker</strong><span class="small">Turns messy ad requests into structured campaign drafts.</span></div>
+        </article>
+        <article class="agent">
+          <img src="../assets/images/safety-manager.png" alt="Safety manager agent">
+          <div><strong>Safety Manager</strong><span class="small">Flags blocked categories before offers are sent.</span></div>
+        </article>
+        <article class="agent">
+          <img src="../assets/images/negotiator.png" alt="Negotiator agent">
+          <div><strong>Negotiator</strong><span class="small">Drafts bounded counter-offer replies.</span></div>
+        </article>
+        <article class="agent">
+          <img src="../assets/images/verifier.png" alt="Verifier agent">
+          <div><strong>Verifier</strong><span class="small">Explains post verification and settlement outcomes.</span></div>
+        </article>
+        <article class="agent">
+          <img src="../assets/images/translator.png" alt="Translator agent">
+          <div><strong>Translator</strong><span class="small">Represents the multilingual future for channel ads.</span></div>
+        </article>
+      </div>
+      <p class="body-copy" style="margin-top: 24px;">Each agent has an ENS identity under <span class="code-name">ethy-ads.eth</span>. The AI assists the flow, while the backend validates state transitions and contract actions.</p>
+      <div class="footer-note"><span>Agent names make AI roles inspectable instead of invisible backend magic.</span><span class="slide-number">06</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-7">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">Wallet and contract layer</p>
+      <h2>Dynamic wallets power the dev Telegram flow.</h2>
+      <div class="two-col">
+        <article class="panel blue">
+          <h3>Dynamic</h3>
+          <p class="body-copy">We used Dynamic's Telegram bot starter as a foundation, then expanded it into Ethy Ads. In the backend, Dynamic server wallets are created with two-of-two threshold signing and are used to sign messages, typed data, and prepared transactions.</p>
+          <p class="small">Template attribution: <span class="code-name">github.com/dynamic-labs-oss/tg-bot-starter</span></p>
+        </article>
+        <article class="panel green">
+          <h3>Escrow contract</h3>
+          <p class="body-copy">The Solidity contract tracks available balances by wallet and token, locks advertiser funds into campaigns, and lets an authorized verifier start, complete, or refund a campaign.</p>
+          <p class="small">The contract stores money-critical facts, while Telegram content and proof metadata stay off-chain.</p>
+        </article>
+      </div>
+      <div class="diagram-line">Dynamic wallet → approve / deposit / create campaign → AdEscrow.sol → start / complete / refund → ENS lifecycle proof</div>
+      <div class="footer-note"><span>Wallet execution is separated from AI suggestions and campaign copy.</span><span class="slide-number">07</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-8">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">Demo path</p>
+      <h2>The story judges should see in 90 seconds.</h2>
+      <div class="three-col">
+        <article class="panel gold">
+          <h3>1. Create identity</h3>
+          <p class="body-copy">Start the bot, create or connect a wallet, and show the generated user ENS name.</p>
+        </article>
+        <article class="panel blue">
+          <h3>2. Lock a campaign</h3>
+          <p class="body-copy">Create a Telegram ad offer, lock funds in escrow, and show the on-chain ad ENS subname.</p>
+        </article>
+        <article class="panel green">
+          <h3>3. Prove the lifecycle</h3>
+          <p class="body-copy">Open the public proof page and show ENS records for lock, start, completion, or refund.</p>
+        </article>
+      </div>
+      <div class="panel violet" style="margin-top: 24px;">
+        <h3>Why this matters</h3>
+        <p class="body-copy">The demo is not just a bot or a contract. It is a complete ad delivery proof loop: Telegram conversation, escrowed money, AI support, ENS identities, and publicly inspectable proof records.</p>
+      </div>
+      <div class="footer-note"><span>Show the proof page last. It makes the architecture tangible.</span><span class="slide-number">08</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="slide-9">
+  <div class="canvas">
+    <div class="inner">
+      <p class="eyebrow">Attribution</p>
+      <h2>Built by a human founder with Codex as the engineering copilot.</h2>
+      <div class="attribution-grid">
+        <article class="panel green">
+          <h3>Human direction</h3>
+          <p class="body-copy">You led the product idea, hackathon positioning, sponsor strategy, user flows, naming, demo priorities, and the core insight: Telegram ad deals need verification and escrow, not another complicated ad platform.</p>
+        </article>
+        <article class="panel blue">
+          <h3>Codex implementation</h3>
+          <p class="body-copy">Codex helped implement and refine the Solidity escrow, Foundry tests, TypeScript backend, Telegram bot flows, campaign state machine, React proof pages, ENS/CCIP-read layer, off-chain resolver, Dynamic wallet integration, and submission copy.</p>
+        </article>
+      </div>
+      <div class="panel gold" style="margin-top: 24px;">
+        <h3>Template credit</h3>
+        <p class="body-copy">The Telegram bot foundation used <span class="code-name">dynamic-labs-oss/tg-bot-starter</span> as a starting template, then grew into the custom Ethy Ads ad booking, escrow, verification, ENS proof, and AI workflow system.</p>
+      </div>
+      <div class="footer-note"><span>Ethy Ads: sponsored posts with proof, identity, and payment guarantees.</span><span class="slide-number">09</span></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const counter = document.getElementById("counter");
+  let current = 0;
+
+  function nearestSlideIndex() {
+    const midpoint = window.scrollY + window.innerHeight / 2;
+    let index = 0;
+    let best = Infinity;
+    slides.forEach((slide, i) => {
+      const distance = Math.abs(slide.offsetTop + slide.offsetHeight / 2 - midpoint);
+      if (distance < best) {
+        best = distance;
+        index = i;
+      }
+    });
+    return index;
+  }
+
+  function updateCounter() {
+    current = nearestSlideIndex();
+    counter.textContent = `${current + 1} / ${slides.length}`;
+  }
+
+  function go(delta) {
+    current = Math.max(0, Math.min(slides.length - 1, nearestSlideIndex() + delta));
+    slides[current].scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.getElementById("prev").addEventListener("click", () => go(-1));
+  document.getElementById("next").addEventListener("click", () => go(1));
+  window.addEventListener("scroll", updateCounter, { passive: true });
+  window.addEventListener("keydown", (event) => {
+    if (["ArrowDown", "ArrowRight", "PageDown", " "].includes(event.key)) {
+      event.preventDefault();
+      go(1);
+    }
+    if (["ArrowUp", "ArrowLeft", "PageUp"].includes(event.key)) {
+      event.preventDefault();
+      go(-1);
+    }
+  });
+  updateCounter();
+</script>
 </body>
 </html>

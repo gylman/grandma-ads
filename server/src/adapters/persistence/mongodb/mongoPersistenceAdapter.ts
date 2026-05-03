@@ -488,7 +488,9 @@ function toChannel(channel: ChannelDocument): Channel {
 }
 
 function normalizeChannelUsername(value: string): string {
-  return value.trim().replace(/^@/, '').toLowerCase();
+  const trimmed = value.trim();
+  const linkMatch = trimmed.match(/^(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\/([a-zA-Z0-9_]{5,})(?:[/?#].*)?$/i);
+  return (linkMatch?.[1] ?? trimmed).replace(/^@/, '').toLowerCase();
 }
 
 function toCampaign(campaign: Campaign): Campaign {

@@ -42,8 +42,12 @@ export function parseTokenAmountForButton(value: string, decimals: number): bigi
 }
 
 export function parseDuration(value: string): number {
-  const match = value.match(/^(\d+)(h|hr|hrs|hour|hours|d|day|days)$/i);
-  if (!match) throw new Error("Duration must look like 24h or 1d.");
+  const match = value.trim().match(/^(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/i);
+  if (!match) throw new Error("Duration must look like 20s, 2m, 24h, or 1d.");
   const amount = Number(match[1]);
-  return /^d|day/i.test(match[2]) ? amount * 86_400 : amount * 3_600;
+  const unit = match[2];
+  if (/^d|day/i.test(unit)) return amount * 86_400;
+  if (/^h|hr|hour/i.test(unit)) return amount * 3_600;
+  if (/^m|min|minute/i.test(unit)) return amount * 60;
+  return amount;
 }

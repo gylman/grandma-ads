@@ -4,9 +4,10 @@ export type AppConfig = {
   port: number;
   clientUrl: string;
   serverUrl: string;
-  persistenceMode: 'inmemory' | 'mongodb';
+  persistenceMode: 'inmemory' | 'mongodb' | 'json';
   databaseUrl: string;
   databaseName: string;
+  jsonDatabasePath: string;
   rpcUrl: string;
   chainId: number;
   escrowContractAddress: string;
@@ -34,6 +35,7 @@ export const config: AppConfig = {
   persistenceMode: parsePersistenceMode(process.env.PERSISTENCE_MODE),
   databaseUrl: process.env.DATABASE_URL ?? '',
   databaseName: process.env.DATABASE_NAME ?? 'grandma_ads',
+  jsonDatabasePath: process.env.JSON_DATABASE_PATH ?? '../data/grandma-ads.json',
   rpcUrl: process.env.RPC_URL ?? '',
   chainId: Number(process.env.CHAIN_ID ?? 31337),
   escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS ?? '',
@@ -61,6 +63,7 @@ function parseTelegramBotMode(mode: string | undefined, token: string | undefine
 
 function parsePersistenceMode(mode: string | undefined): AppConfig['persistenceMode'] {
   if (mode === 'mongodb') return 'mongodb';
+  if (mode === 'json') return 'json';
   return 'inmemory';
 }
 

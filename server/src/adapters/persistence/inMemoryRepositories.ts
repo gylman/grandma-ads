@@ -6,23 +6,58 @@ import { DevWallet, DevWalletRepository } from '../../application/ports/devWalle
 import { UpsertUserInput, UserRepository } from '../../application/ports/userRepository';
 import { Campaign, CampaignStatus, Channel, ChannelStatus, User, VerificationCheck } from '../../domain/types';
 
-let nextId = 1;
+export type InMemoryRepositoryState = {
+  nextId: number;
+  users: User[];
+  channels: Channel[];
+  campaigns: Campaign[];
+  verificationChecks: VerificationCheck[];
+  devWallets: DevWallet[];
+};
 
-function id(prefix: string): string {
-  return `${prefix}_${nextId++}`;
+export type InMemoryRepositoryOptions = {
+  state?: InMemoryRepositoryState;
+  onChange?: (state: InMemoryRepositoryState) => void | Promise<void>;
+};
+
+export function createEmptyInMemoryRepositoryState(): InMemoryRepositoryState {
+  return {
+    nextId: 1,
+    users: [],
+    channels: [],
+    campaigns: [],
+    verificationChecks: [],
+    devWallets: [],
+  };
 }
 
-export function createInMemoryRepositories(): {
+export function createInMemoryRepositories(options: InMemoryRepositoryOptions = {}): {
   users: UserRepository;
   channels: ChannelRepository;
   campaigns: CampaignRepository;
   devWallets: DevWalletRepository;
 } {
-  const users = new Map<string, User>();
-  const channels = new Map<string, Channel>();
-  const campaigns = new Map<string, Campaign>();
-  const verificationChecks = new Map<string, VerificationCheck>();
-  const devWallets = new Map<string, DevWallet>();
+  let nextId = options.state?.nextId ?? 1;
+  const users = new Map((options.state?.users ?? []).map((user) => [user.id, user]));
+  const channels = new Map((options.state?.channels ?? []).map((channel) => [channel.id, channel]));
+  const campaigns = new Map((options.state?.campaigns ?? []).map((campaign) => [campaign.id, campaign]));
+  const verificationChecks = new Map((options.state?.verificationChecks ?? []).map((check) => [check.id, check]));
+  const devWallets = new Map((options.state?.devWallets ?? []).map((wallet) => [wallet.telegramUserId, wallet]));
+
+  function id(prefix: string): string {
+    return `${prefix}_${nextId++}`;
+  }
+
+  async function persist(): Promise<void> {
+    await options.onChange?.({
+      nextId,
+      users: [...users.values()],
+      channels: [...channels.values()],
+      campaigns: [...campaigns.values()],
+      verificationChecks: [...verificationChecks.values()],
+      devWallets: [...devWallets.values()],
+    });
+  }
 
   return {
     users: {
@@ -40,6 +75,7 @@ export function createInMemoryRepositories(): {
             updatedAt: now,
           };
           users.set(updated.id, updated);
+          await persist();
           return updated;
         }
 
@@ -53,6 +89,7 @@ export function createInMemoryRepositories(): {
           updatedAt: now,
         };
         users.set(user.id, user);
+        await persist();
         return user;
       },
 
@@ -82,6 +119,7 @@ export function createInMemoryRepositories(): {
             users.delete(id);
           }
         }
+        await persist();
       },
     },
 
@@ -117,6 +155,7 @@ export function createInMemoryRepositories(): {
           updatedAt: now,
         };
         channels.set(channel.id, channel);
+        await persist();
         return { channel, status: 'CREATED' };
       },
 
@@ -132,6 +171,7 @@ export function createInMemoryRepositories(): {
           updatedAt: new Date(),
         };
         channels.set(channelId, updated);
+        await persist();
         return updated;
       },
 
@@ -155,6 +195,7 @@ export function createInMemoryRepositories(): {
             channels.delete(id);
           }
         }
+        await persist();
       },
     },
 
@@ -162,6 +203,7 @@ export function createInMemoryRepositories(): {
       async createDraft(input: CreateDraftCampaignInput): Promise<Campaign> {
         const campaign = createCampaign({ ...input, id: input.id ?? id('cmp') });
         campaigns.set(campaign.id, campaign);
+        await persist();
         return campaign;
       },
 
@@ -197,6 +239,7 @@ export function createInMemoryRepositories(): {
 
         const updated: Campaign = { ...campaign, ...patch, updatedAt: new Date() };
         campaigns.set(campaignId, updated);
+        await persist();
         return updated;
       },
 
@@ -206,6 +249,7 @@ export function createInMemoryRepositories(): {
 
         const updated = transitionCampaign(campaign, nextStatus);
         campaigns.set(campaignId, updated);
+        await persist();
         return updated;
       },
 
@@ -234,6 +278,7 @@ export function createInMemoryRepositories(): {
 
         verificationChecks.set(check.id, check);
         if (input.type === 'FINAL') {
+          await persist();
           return { check, result };
         }
 
@@ -247,6 +292,7 @@ export function createInMemoryRepositories(): {
           updatedAt: new Date(),
         });
 
+        await persist();
         return { check, result };
       },
 
@@ -264,6 +310,7 @@ export function createInMemoryRepositories(): {
             campaigns.delete(id);
           }
         }
+        await persist();
       },
     },
 
@@ -274,11 +321,13 @@ export function createInMemoryRepositories(): {
 
       async save(wallet: DevWallet): Promise<DevWallet> {
         devWallets.set(wallet.telegramUserId, wallet);
+        await persist();
         return wallet;
       },
 
       async deleteByTelegramUserId(telegramUserId: string): Promise<void> {
         devWallets.delete(telegramUserId);
+        await persist();
       },
     },
   };

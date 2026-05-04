@@ -3,7 +3,7 @@ import { Campaign, CampaignIntakeResult } from '../../domain/types';
 export function extractCampaignIntake(message: string): CampaignIntakeResult {
   const channel = message.match(/@([a-zA-Z0-9_]{5,})/)?.[0];
   const amountMatch = message.match(/\b(\d+(?:\.\d+)?)\s*(USDC|USD|DAI|ETH)?\b/i);
-  const durationMatch = message.match(/\b(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days|d)\b/i);
+  const durationMatch = message.match(/\b(\d+)\s*(second|seconds|sec|secs|s|minute|minutes|min|mins|m|hour|hours|hr|hrs|h|day|days|d)\b/i);
 
   const durationSeconds = durationMatch
     ? Number(durationMatch[1]) * durationUnitSeconds(durationMatch[2])
@@ -47,7 +47,8 @@ export function explainVerificationFailure(reason: string | null): string {
 function durationUnitSeconds(unit: string): number {
   if (/^d|day/i.test(unit)) return 86_400;
   if (/^h|hr|hour/i.test(unit)) return 3_600;
-  return 60;
+  if (/^m|min|minute/i.test(unit)) return 60;
+  return 1;
 }
 
 function formatDuration(durationSeconds: number): string {

@@ -15,8 +15,8 @@ export function highlightNegotiationTerms(text: string): string {
     return `<b>${amount} ${token.toUpperCase()}</b>`;
   });
 
-  // Duration, e.g. 24 hours, 24h, 1 day
-  html = html.replace(/\b(\d+)\s*(h|hr|hrs|hour|hours|d|day|days)\b/gi, (_match, value, unit) => {
+  // Duration, e.g. 20 seconds, 2 minutes, 24 hours, 1 day
+  html = html.replace(/\b(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\b/gi, (_match, value, unit) => {
     return `<b>${value} ${unit}</b>`;
   });
 

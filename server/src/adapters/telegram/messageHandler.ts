@@ -44,7 +44,10 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
   }
   const pendingPrompt = ctx.state.pendingPromptByChat.get(chatId);
 
-  if (pendingPrompt && !text.startsWith("/") && message.reply_to_message?.message_id === pendingPrompt.promptMessageId) {
+  const isReplyToPendingPrompt = message.reply_to_message?.message_id === pendingPrompt?.promptMessageId;
+  const shouldHandlePendingPrompt = pendingPrompt && !text.startsWith("/") && (isReplyToPendingPrompt || pendingPrompt.type === "REGISTER_CHANNEL");
+
+  if (shouldHandlePendingPrompt) {
     ctx.state.pendingPromptByChat.delete(chatId);
     await runDevCommand(ctx, chatId, async () => {
       if (pendingPrompt.type === "CAMPAIGN_DRAFT") {
@@ -77,6 +80,13 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
           if (!pendingPrompt.campaignId) throw new Error("Campaign context is missing for this counter prompt.");
           await counterCampaign(ctx, chatId, telegramUserId, pendingPrompt.campaignId, text);
         }
+    });
+    return;
+  }
+
+  if (isTelegramChannelUrl(text)) {
+    await runDevCommand(ctx, chatId, async () => {
+      await registerChannelFromText(ctx, chatId, telegramUserId, text);
     });
     return;
   }
@@ -349,4 +359,8 @@ export async function handleMessage(ctx: TelegramBotContext, message: TelegramMe
   }
 
   await ctx.api.sendMessage(chatId, "I did not understand that yet. Try /help.");
+}
+
+function isTelegramChannelUrl(text: string): boolean {
+  return /^(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\/[a-zA-Z0-9_]{5,}\/?$/i.test(text.trim());
 }
